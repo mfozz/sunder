@@ -1,5 +1,21 @@
 # Sunder
-Add some literal crunch to your game! This D&D 5e module breaks weapons on fumbles and breaks armor on crits, both with customizable thresholds. Repair items by clicking the hammer icon in the item's header or by using a macro. Whether you're running a gritty campaign or just want gear to feel more dynamic, Sunder has you covered.
+
+
+
+
+Random Loot Generator  
+=======
+
+![Foundry Minimum Version](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/mfozz/random-loot-generator/main/module.json&label=Foundry%20Version&query=$.compatibility.minimum&colorB=orange)
+![Latest Release](https://img.shields.io/github/v/release/mfozz/random-loot-generator)
+![Downloads](https://img.shields.io/github/downloads/mfozz/random-loot-generator/total)
+[![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Frandom-loot-generator&colorB=4aa94a)](https://forge-vtt.com/bazaar#package=random-loot-generator)
+
+**Why do I need this module?**  
+-----------
+Do you wish that all those random shields and swords that you pick up actually had purpose? Do you want your fights to feel more dyanamic by weapons and armor suddenly breaking in the middle of a fight.
+
+Now you can add some literal crunch to your game! This D&D 5e module breaks weapons on fumbles and breaks armor on crits, both with customizable thresholds. Repair items by clicking the hammer icon in the item's header or by using a macro. Whether you're running a gritty campaign or just want gear to feel more dynamic, Sunder has you covered.
 
 
 <img src="https://github.com/user-attachments/assets/7416cf01-a9c7-4ec3-906c-14ebe6030b1b" alt="" width="40%">
@@ -13,6 +29,10 @@ Add some literal crunch to your game! This D&D 5e module breaks weapons on fumbl
 <img src="https://github.com/user-attachments/assets/ad008479-0427-4bc7-86bc-a14a9310f4ad" alt="" width="50%">
 
 
+
+Manual Download:
+-----------
+https://github.com/mfozz/sunder/releases/latest/download/module.json
 
 
 

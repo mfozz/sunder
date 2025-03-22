@@ -33,7 +33,7 @@ https://github.com/mfozz/sunder/releases/latest/download/module.json
 
 ## Features
 - **Breakage Mechanics:** Trigger weapon breakage on low rolls and armor/shield breakage on high rolls with configurable thresholds.
-- **Two-Stage Breakage:** Transition items from Undamaged → Damaged → Broken. Durability decrements by 1 per hit until reaching 0. At durability 0, the item is broken.
+- **Two-Stage Breakage:** Transition items from Undamaged → Damaged → Broken. Durability is based on rarity and decrements by 1 per hit until reaching 0. At durability 0, the item is broken.
 - **Durability Tracking:** Assign durability based on item rarity, reducing it on failed breakage rolls.
 - **Heavy Weapon Bonus:** Add a configurable bonus to breakage rolls for heavy weapons.
 - **Repair System:** Use the "Repair" button on item sheets (GM-only), with costs based on a percentage of the original price, doubled for broken items, and deducted gold from PCs if available.

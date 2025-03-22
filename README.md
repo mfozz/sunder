@@ -3,7 +3,7 @@
 ![Foundry Minimum Version](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/mfozz/sunder/main/module.json&label=Foundry%20Version&query=$.compatibility.minimum&colorB=orange)
 ![Latest Release](https://img.shields.io/github/v/release/mfozz/sunder)
 ![Downloads](https://img.shields.io/github/downloads/mfozz/sunder/total)
-[![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Frandom-loot-generator&colorB=4aa94a)](https://forge-vtt.com/bazaar#package=sunder)
+[![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Fsunder&colorB=4aa94a)](https://forge-vtt.com/bazaar#package=sunder)
 
 **Why do I need this module?**  
 -----------

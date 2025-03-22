@@ -1,5 +1,4 @@
 # Sunder
-=======
 
 ![Foundry Minimum Version](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/mfozz/random-loot-generator/main/module.json&label=Foundry%20Version&query=$.compatibility.minimum&colorB=orange)
 ![Latest Release](https://img.shields.io/github/v/release/mfozz/random-loot-generator)

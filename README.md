@@ -7,7 +7,7 @@
 
 **Why do I need this module?**  
 -----------
-Do you wish that all those random shields and swords that you pick up actually had purpose? Do you want your fights to feel more dyanamic by weapons and armor suddenly breaking in the middle of a fight.
+Do you want your fights to feel more dyanamic by weapons and armor suddenly breaking in the middle of a fight? Do you wish that all those random shields and swords you picked up were finally useful? 
 
 Now you can add some literal crunch to your game! This D&D 5e module breaks weapons on fumbles and breaks armor on crits, both with customizable thresholds. Repair items by clicking the hammer icon in the item's header or by using a macro. Whether you're running a gritty campaign or just want gear to feel more dynamic, Sunder has you covered.
 

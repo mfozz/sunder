@@ -5,10 +5,10 @@ Add some literal crunch to your game! This D&D 5e module breaks weapons on fumbl
 <img src="https://github.com/user-attachments/assets/7416cf01-a9c7-4ec3-906c-14ebe6030b1b" alt="" width="40%">
 <img src="https://github.com/user-attachments/assets/a039fe07-a350-474b-b3ea-0b93f4ba6fd5" alt="" width="40%">  
 
-
+<br><br>
 <img src="https://github.com/user-attachments/assets/e45f4d6d-bdd7-4720-8325-3f89e78a20cf" alt="" width="40%">
 <img src="https://github.com/user-attachments/assets/9559dc3f-d5c8-4b99-ad03-58945b81cae7" alt="" width="40%">  
-
+<br><br>
 
 <img src="https://github.com/user-attachments/assets/ad008479-0427-4bc7-86bc-a14a9310f4ad" alt="" width="50%">
 

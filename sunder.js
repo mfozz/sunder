@@ -299,32 +299,32 @@ class Sunder {
         const isRoll = message.flags?.core?.RollTable || message.rolls;
         console.log("[Sunder] Is this a roll?", !!isRoll);
         if (!isRoll) return;
-
+    
         const isAttackRoll = message.flags?.dnd5e?.roll?.type === "attack";
         console.log("[Sunder] Is attack roll?", isAttackRoll, "Flags:", message.flags?.dnd5e);
         if (!isAttackRoll) return;
-
+    
         const roll = message.rolls?.[0];
-        const rawDieResult = roll?.terms?.[0]?.results?.[0]?.result;
-        console.log("[Sunder] Roll data:", roll, "Raw result:", rawDieResult);
-        if (rawDieResult === undefined) return;
-
+        const rollTotal = roll?.total; // Use the final roll total, not the first die
+        console.log("[Sunder] Roll data:", roll, "Final result:", rollTotal);
+        if (rollTotal === undefined) return;
+    
         // Check for a target before proceeding
         if (game.user.targets.size === 0) {
             console.log("[Sunder] No target selected, skipping breakage check.");
             return;
         }
-
+    
         const threshold = game.settings.get("sunder", "breakageThreshold");
         const criticalThreshold = game.settings.get("sunder", "criticalBreakageThreshold");
-        console.log("[Sunder] Thresholds:", threshold, criticalThreshold, "Result:", rawDieResult);
-
+        console.log("[Sunder] Thresholds:", threshold, criticalThreshold, "Result:", rollTotal);
+    
         const speaker = ChatMessage.getSpeaker();
         console.log("[Sunder] Speaker:", speaker);
         const token = canvas.tokens.get(speaker.token);
         const attacker = token ? token.actor : game.actors.get(speaker.actor);
         console.log("[Sunder] Attacker:", attacker?.name || "None", "Using token:", !!token);
-
+    
         let weaponItem;
         const itemId = message.flags?.dnd5e?.item?.id || message.flags?.dnd5e?.roll?.itemId;
         console.log("[Sunder] Weapon ID from roll flags:", itemId);
@@ -341,8 +341,8 @@ class Sunder {
         }
         const isHeavy = weaponItem?.system.properties?.has("hvy") || false;
         console.log("[Sunder] Attacker weapon:", weaponItem?.name || "None", "Is Heavy:", isHeavy);
-
-        await this._triggerBreakage(attacker, rawDieResult, isHeavy);
+    
+        await this._triggerBreakage(attacker, rollTotal, isHeavy);
     }
 
     async _handleMidiQolWorkflow(workflow) {
@@ -352,24 +352,24 @@ class Sunder {
             console.log("[Sunder] No attack roll found in workflow.");
             return;
         }
-
-        const rawDieResult = roll.terms?.[0]?.results?.[0]?.result;
-        console.log("[Sunder] MIDI Roll data:", roll, "Raw result:", rawDieResult);
-        if (rawDieResult === undefined) return;
-
+    
+        const rollTotal = workflow.attackTotal || roll.total; // Use MIDI-QOL's final total if available, else roll.total
+        console.log("[Sunder] MIDI Roll data:", roll, "Final result:", rollTotal);
+        if (rollTotal === undefined) return;
+    
         // Check for a target before proceeding
         if (!workflow.targets || workflow.targets.size === 0) {
             console.log("[Sunder] No target selected in MIDI QOL workflow, skipping breakage check.");
             return;
         }
-
+    
         const attacker = workflow.actor;
         console.log("[Sunder] MIDI Attacker:", attacker?.name);
-
+    
         const isHeavy = workflow.item?.system.properties?.has("hvy") || false;
         console.log("[Sunder] MIDI Attacker weapon:", workflow.item?.name || "None", "Is Heavy:", isHeavy);
-
-        await this._triggerBreakage(attacker, rawDieResult, isHeavy);
+    
+        await this._triggerBreakage(attacker, rollTotal, isHeavy);
     }
 
     async _triggerBreakage(attacker, rawDieResult, isHeavy) {
@@ -465,6 +465,21 @@ class Sunder {
 Hooks.once('init', () => {
     console.log("[Sunder] Init hook fired");
     game.sunder = new Sunder();
+});
+
+// Register socket handler for breakage popup requests at the top level
+Hooks.on("init", () => {
+    game.socket.on("module.sunder", async (data) => {
+        if (data.type === "showBreakagePopup" && game.user.id === data.userId) {
+            const actor = game.actors.get(data.actorId);
+            const item = actor?.items.get(data.itemId);
+            if (actor && item) {
+                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.userId);
+            } else {
+                console.error("[Sunder] Failed to find actor or item for breakage popup:", data);
+            }
+        }
+    });
 });
 
 class DurabilityConfig extends FormApplication {

@@ -1,5 +1,17 @@
 class SunderUI_v2 {
-    static async showBreakagePopup(actor, item, isHeavy = false) {
+    static async showBreakagePopup(actor, item, isHeavy = false, userId = null) {
+        // If userId is provided, this is a GM handling the request
+        if (userId && game.user.id !== userId) {
+            return; // Only the specified user (GM) should render the actionable popup
+        }
+
+        const gmUser = game.users.find(u => u.isGM && u.active);
+        if (!gmUser) {
+            ui.notifications.error("No active GM found to handle the breakage check.");
+            return;
+        }
+
+        // Shared settings and item data
         const breakageDC = game.settings.get("sunder", "breakageDC");
         const durabilityByRarityRaw = game.settings.get("sunder", "durabilityByRarity");
         const twoStageBreakage = game.settings.get("sunder", "twoStageBreakage");
@@ -43,17 +55,56 @@ class SunderUI_v2 {
             : durability <= 0 
             ? `This item takes a ${weaponAttackPenalty * 2} penalty to attack rolls or AC and is unusable until repaired.` 
             : "";
-
         const previewImage = item.getFlag("sunder", "previewImage") || item.img || "icons/svg/mystery-man.svg";
+        const color = isDamaged ? "orange" : "inherit";
 
+        // Common dialog content
+        const content = `
+            <div class="sunder-breakage-popup">
+                <img src="${previewImage}" class="sunder-preview-image" alt="${baseName}" />
+                <div class="sunder-details">
+                    <p><img src="${icon}" style="width: 24px; vertical-align: middle;" title="${tooltip}"> 
+                       ${actor.name}'s <strong style="color: ${color}">${item.name}</strong> ${game.i18n.localize("sunder.popup.atRisk")}</p>
+                    <p>Damaged: ${isDamaged} | Durability: ${durability} | DC: ${breakageDC}${isHeavy ? ` | Heavy Bonus: +${heavyBonus}` : ""}</p>
+                </div>
+            </div>
+        `;
+
+        if (!game.user.isGM) {
+            // Player sees a read-only dialog
+            new Dialog({
+                title: game.i18n.localize("sunder.popup.title"),
+                content: content + "<p>Awaiting GM decision...</p>",
+                buttons: {}, // No buttons for players
+                closeOnEscape: false, // Prevent escape key from closing
+                render: (html) => {
+                    // Remove the close button for players
+                    html.closest(".app").find(".window-header .close").remove();
+                    console.log(`[Sunder] Player dialog rendered for ${item.name} without close button`);
+                }
+            }).render(true);
+
+            // Request GM to handle it
+            game.socket.emit("module.sunder", {
+                type: "showBreakagePopup",
+                actorId: actor.id,
+                itemId: item.id,
+                isHeavy: isHeavy,
+                userId: gmUser.id
+            });
+            return;
+        }
+
+        // GM-specific logic
         if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
 
-        const color = isDamaged ? "orange" : "inherit";
+        let resolution = null; // Track dialog resolution: 'roll', 'ignore', or null (dismissed via "X")
 
         const buttons = {
             roll: {
                 label: "Roll for Breakage",
                 callback: async () => {
+                    resolution = 'roll';
                     if (!actor || !actor.uuid) {
                         console.error("[Sunder] Invalid actor:", actor);
                         ui.notifications.error("Cannot roll—invalid actor!");
@@ -200,32 +251,45 @@ class SunderUI_v2 {
                         if (breakagePassSound) AudioHelper.play({ src: breakagePassSound }, true);
                     }
                 }
+            },
+            cancel: {
+                label: "Ignore",
+                callback: () => {
+                    resolution = 'ignore';
+                    ui.notifications.info("Breakage ignored.");
+                    ChatMessage.create({
+                        content: `<strong>${item.name}</strong> breakage check ignored by GM.`,
+                        speaker: { alias: "Sunder" },
+                        style: CONST.CHAT_MESSAGE_STYLES.OOC
+                    });
+                }
             }
         };
-        if (game.user.isGM) {
-            buttons.cancel = { label: "Ignore", callback: () => ui.notifications.info("Breakage ignored.") };
-        }
 
         const dialog = new Dialog({
             title: game.i18n.localize("sunder.popup.title"),
-            content: `
-                <div class="sunder-breakage-popup">
-                    <img src="${previewImage}" class="sunder-preview-image" alt="${baseName}" />
-                    <div class="sunder-details">
-                        <p><img src="${icon}" style="width: 24px; vertical-align: middle;" title="${tooltip}"> 
-                           ${actor.name}'s <strong style="color: ${color}">${item.name}</strong> ${game.i18n.localize("sunder.popup.atRisk")}</p>
-                        <p>Damaged: ${isDamaged} | Durability: ${durability} | DC: ${breakageDC}${isHeavy ? ` | Heavy Weapon Bonus: +${heavyBonus}` : ""}</p>
-                    </div>
-                </div>
-            `,
+            content: content,
             buttons: buttons,
+            default: "cancel",
             render: (html) => {
-                // Force position after rendering
                 dialog.setPosition({
                     top: window.innerHeight * 0.2, 
                     left: window.innerWidth * 0.35
                 });
-                console.log(`[Sunder] Dialog positioned at top: ${dialog.position.top}, left: ${dialog.position.left}`);
+                console.log(`[Sunder] GM dialog positioned at top: ${dialog.position.top}, left: ${dialog.position.left}`);
+            },
+            close: () => {
+                if (resolution === null) {
+                    console.log(`[Sunder] GM dialog for ${item.name} dismissed without action`);
+                }
+                // Notify players to close their dialogs and update UI
+                if (resolution) {
+                    game.socket.emit("module.sunder", {
+                        type: "resolveBreakage",
+                        itemId: item.id,
+                        resolution: resolution
+                    });
+                }
             }
         });
 
@@ -236,4 +300,24 @@ class SunderUI_v2 {
 Hooks.once('init', () => {
     console.log("SunderUI_v2 Module Initialized");
     game.sunderUI = SunderUI_v2;
+
+    // Socket handler for GM requests and player dialog resolution
+    game.socket.on("module.sunder", async (data) => {
+        if (data.type === "showBreakagePopup" && game.user.id === data.userId) {
+            const actor = game.actors.get(data.actorId);
+            const item = actor?.items.get(data.itemId);
+            if (actor && item) {
+                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.userId);
+            } else {
+                console.error("[Sunder] Failed to find actor or item for breakage popup:", data);
+            }
+        } else if (data.type === "resolveBreakage" && !game.user.isGM) {
+            // Close player dialog when GM resolves
+            const dialog = Object.values(ui.windows).find(w => w.title === game.i18n.localize("sunder.popup.title"));
+            if (dialog) {
+                dialog.close();
+                console.log(`[Sunder] Player dialog for item ${data.itemId} closed due to GM resolution: ${data.resolution}`);
+            }
+        }
+    });
 });

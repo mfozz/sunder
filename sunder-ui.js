@@ -1,11 +1,6 @@
 class SunderUI_v2 {
-    static async showBreakagePopup(actor, item, isHeavy = false, userId = null) {
-        // If userId is provided, this is a GM handling the request
-        if (userId && game.user.id !== userId) {
-            return; // Only the specified user (GM) should render the actionable popup
-        }
-
-        const gmUser = game.users.find(u => u.isGM && u.active);
+    static async showBreakagePopup(actor, item, isHeavy = false, gmUserId = null, affectedUserId = null, rollType = null) {
+        const gmUser = game.users.find(u => u.id === gmUserId && u.isGM && u.active);
         if (!gmUser) {
             ui.notifications.error("No active GM found to handle the breakage check.");
             return;
@@ -33,7 +28,6 @@ class SunderUI_v2 {
         let durability = item.getFlag("sunder", "durability");
         const isDamaged = item.getFlag("sunder", "damaged") || false;
 
-        // Validate durability
         if (durability === undefined || durability === null || typeof durability !== "number") {
             console.log(`[Sunder] Invalid durability for ${item.name}: ${durability}, resetting to ${baseDurability}`);
             durability = baseDurability;
@@ -45,9 +39,6 @@ class SunderUI_v2 {
         const isWeapon = item.type === "weapon";
         const isShield = item.type === "equipment" && item.system.type?.value === "shield";
         const isArmor = item.type === "equipment" && item.system.type?.value !== "shield" && (item.system.armor?.value > 0 || item.system.armor?.type === "armor");
-
-        console.log(`[Sunder] Initial state - Item: ${item.name}, Damaged: ${isDamaged}, Durability: ${durability}, Two-Stage: ${twoStageBreakage}, IsArmor: ${isArmor}`);
-
         const baseName = item.name.replace(/\s*\(Damaged\)$/, "").replace(/\s*\(Broken\)$/, "");
         const icon = isDamaged ? "icons/svg/downgrade.svg" : durability <= 0 ? "icons/svg/shield.svg" : "";
         const tooltip = isDamaged 
@@ -58,7 +49,6 @@ class SunderUI_v2 {
         const previewImage = item.getFlag("sunder", "previewImage") || item.img || "icons/svg/mystery-man.svg";
         const color = isDamaged ? "orange" : "inherit";
 
-        // Common dialog content
         const content = `
             <div class="sunder-breakage-popup">
                 <img src="${previewImage}" class="sunder-preview-image" alt="${baseName}" />
@@ -70,153 +60,60 @@ class SunderUI_v2 {
             </div>
         `;
 
-        if (!game.user.isGM) {
-            // Player sees a read-only dialog
-            new Dialog({
-                title: game.i18n.localize("sunder.popup.title"),
-                content: content + "<p>Awaiting GM decision...</p>",
-                buttons: {}, // No buttons for players
-                closeOnEscape: false, // Prevent escape key from closing
-                render: (html) => {
-                    // Remove the close button for players
-                    html.closest(".app").find(".window-header .close").remove();
-                    console.log(`[Sunder] Player dialog rendered for ${item.name} without close button`);
-                }
-            }).render(true);
-
-            // Request GM to handle it
-            game.socket.emit("module.sunder", {
-                type: "showBreakagePopup",
-                actorId: actor.id,
-                itemId: item.id,
-                isHeavy: isHeavy,
-                userId: gmUser.id
+        // Roll logic shared between GM and player
+        const handleRoll = async () => {
+            const rollFormula = isHeavy ? `1d20+${heavyBonus}` : "1d20";
+            const roll = await new Roll(rollFormula).evaluate();
+            await roll.toMessage({ 
+                flavor: `Breakage Roll for ${item.name}${isHeavy ? ` (Heavy Weapon Bonus +${heavyBonus})` : ""}`,
+                speaker: ChatMessage.getSpeaker({ actor })
             });
-            return;
-        }
+            const rollResult = roll.total;
+            console.log(`[Sunder] Roll result: ${rollResult}, DC: ${breakageDC}, Heavy: ${isHeavy}`);
 
-        // GM-specific logic
-        if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
+            if (rollResult < breakageDC) {
+                let newDurability = durability;
+                let updateData = { _id: item.id };
+                let description = item.system.description.value || "";
+                let effectData = {
+                    name: `Sunder: ${baseName}`,
+                    icon: "icons/svg/downgrade.svg",
+                    transfer: true,
+                    changes: [],
+                    disabled: false
+                };
 
-        let resolution = null; // Track dialog resolution: 'roll', 'ignore', or null (dismissed via "X")
+                const existingEffects = item.effects.filter(e => e.name.includes("Sunder"));
+                for (const effect of existingEffects) await effect.delete();
+                description = description.replace(/<p><i>This item is (damaged|broken) \(-\d penalty\).*<\/i><\/p>/, "");
 
-        const buttons = {
-            roll: {
-                label: "Roll for Breakage",
-                callback: async () => {
-                    resolution = 'roll';
-                    if (!actor || !actor.uuid) {
-                        console.error("[Sunder] Invalid actor:", actor);
-                        ui.notifications.error("Cannot roll—invalid actor!");
-                        return;
-                    }
+                const basePrice = item.system.price?.value || 1;
+                if (!item.getFlag("sunder", "originalPrice")) await item.setFlag("sunder", "originalPrice", basePrice);
 
-                    const rollFormula = isHeavy ? `1d20+${heavyBonus}` : "1d20";
-                    const roll = await new Roll(rollFormula).evaluate();
-                    await roll.toMessage({ 
-                        flavor: `Breakage Roll for ${item.name}${isHeavy ? ` (Heavy Weapon Bonus +${heavyBonus})` : ""}`,
-                        speaker: ChatMessage.getSpeaker({ actor })
-                    });
-                    const rollResult = roll.total;
-                    console.log(`[Sunder] Roll result: ${rollResult}, DC: ${breakageDC}, Heavy: ${isHeavy}`);
-
-                    if (rollResult < breakageDC) {
-                        let newDurability = durability;
-                        let updateData = { _id: item.id };
-                        let description = item.system.description.value || "";
-                        let effectData = {
-                            name: `Sunder: ${baseName}`,
-                            icon: "icons/svg/downgrade.svg",
-                            transfer: true,
-                            changes: [],
-                            disabled: false
-                        };
-
-                        const existingEffects = item.effects.filter(e => e.name.includes("Sunder"));
-                        for (const effect of existingEffects) {
-                            await effect.delete();
+                if (twoStageBreakage && (isWeapon || isArmor || isShield)) {
+                    if (!isDamaged) {
+                        newDurability = durability - 1;
+                        if (newDurability < 0) newDurability = 0;
+                        await item.setFlag("sunder", "durability", newDurability);
+                        await item.setFlag("sunder", "damaged", true);
+                        updateData.name = `${baseName} (Damaged)`;
+                        updateData["system.description.value"] = description + `<p><i>This item is damaged (${isWeapon ? weaponAttackPenalty : armorACPenalty} penalty)</i></p>`;
+                        updateData["system.price.value"] = Math.max(1, Math.floor(basePrice / 2));
+                        if (isWeapon) {
+                            effectData.changes.push({ key: "system.bonuses.mwak.attack", mode: 2, value: weaponAttackPenalty });
+                            effectData.changes.push({ key: "system.bonuses.rwak.attack", mode: 2, value: weaponAttackPenalty });
+                        } else if (isArmor || isShield) {
+                            effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty });
                         }
-                        description = description.replace(/<p><i>This item is (damaged|broken) \(-\d penalty\).*<\/i><\/p>/, "");
-
-                        const basePrice = item.system.price?.value || 1;
-                        if (!item.getFlag("sunder", "originalPrice")) {
-                            await item.setFlag("sunder", "originalPrice", basePrice);
-                        }
-
-                        if (twoStageBreakage && (isWeapon || isArmor || isShield)) {
-                            console.log(`[Sunder] Two-stage - Damaged: ${isDamaged}, Durability: ${durability}`);
-                            if (!isDamaged) {
-                                newDurability = durability - 1;
-                                if (newDurability < 0) newDurability = 0;
-                                console.log(`[Sunder] First hit - New Durability: ${newDurability}`);
-                                await item.setFlag("sunder", "durability", newDurability);
-                                await item.setFlag("sunder", "damaged", true);
-                                console.log(`[Sunder] Updating ${item.name} to Damaged`);
-                                updateData.name = `${baseName} (Damaged)`;
-                                updateData["system.description.value"] = description + `<p><i>This item is damaged (${isWeapon ? weaponAttackPenalty : armorACPenalty} penalty)</i></p>`;
-                                updateData["system.price.value"] = Math.max(1, Math.floor(basePrice / 2));
-                                if (isWeapon) {
-                                    effectData.changes.push({ key: "system.bonuses.mwak.attack", mode: 2, value: weaponAttackPenalty });
-                                    effectData.changes.push({ key: "system.bonuses.rwak.attack", mode: 2, value: weaponAttackPenalty });
-                                } else if (isArmor || isShield) {
-                                    effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty });
-                                }
-                                await ChatMessage.create({
-                                    content: `<strong>${item.name}</strong> is damaged!`,
-                                    speaker: { alias: "Sunder" },
-                                    style: CONST.CHAT_MESSAGE_STYLES.OOC
-                                });
-                                ui.notifications.warn(`${item.name} is now DAMAGED! (Durability: ${newDurability})`);
-                                if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
-                            } else {
-                                newDurability = durability - 1;
-                                if (newDurability < 0) newDurability = 0;
-                                console.log(`[Sunder] Subsequent hit - New Durability: ${newDurability}`);
-                                await item.setFlag("sunder", "durability", newDurability);
-                                await item.setFlag("sunder", "damaged", true);
-                                if (newDurability <= 0) {
-                                    console.log(`[Sunder] Updating ${item.name} to Broken`);
-                                    updateData.name = `${baseName} (Broken)`;
-                                    updateData["system.description.value"] = description + `<p><i>This item is broken (${isWeapon ? weaponAttackPenalty * 2 : armorACPenalty * 2} penalty) and unusable until repaired</i></p>`;
-                                    updateData["system.price.value"] = 0;
-                                    if (isWeapon) {
-                                        effectData.changes.push({ key: "system.bonuses.mwak.attack", mode: 2, value: weaponAttackPenalty * 2 });
-                                        effectData.changes.push({ key: "system.bonuses.rwak.attack", mode: 2, value: weaponAttackPenalty * 2 });
-                                    } else if (isArmor || isShield) {
-                                        effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty * 2 });
-                                    }
-                                    await ChatMessage.create({
-                                        content: `<strong>${item.name}</strong> breaks!`,
-                                        speaker: { alias: "Sunder" },
-                                        style: CONST.CHAT_MESSAGE_STYLES.OOC
-                                    });
-                                    ui.notifications.error(`${item.name} ${game.i18n.localize("sunder.popup.broken")}`);
-                                    if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
-                                } else {
-                                    console.log(`[Sunder] Updating ${item.name} to Damaged (still damaged)`);
-                                    updateData.name = `${baseName} (Damaged)`;
-                                    updateData["system.description.value"] = description + `<p><i>This item is damaged (${isWeapon ? weaponAttackPenalty : armorACPenalty} penalty)</i></p>`;
-                                    updateData["system.price.value"] = Math.max(1, Math.floor(basePrice / 2));
-                                    if (isWeapon) {
-                                        effectData.changes.push({ key: "system.bonuses.mwak.attack", mode: 2, value: weaponAttackPenalty });
-                                        effectData.changes.push({ key: "system.bonuses.rwak.attack", mode: 2, value: weaponAttackPenalty });
-                                    } else if (isArmor || isShield) {
-                                        effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty });
-                                    }
-                                    await ChatMessage.create({
-                                        content: `<strong>${item.name}</strong> is damaged!`,
-                                        speaker: { alias: "Sunder" },
-                                        style: CONST.CHAT_MESSAGE_STYLES.OOC
-                                    });
-                                    ui.notifications.warn(`${item.name} is now DAMAGED! (Durability: ${newDurability})`);
-                                    if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
-                                }
-                            }
-                        } else {
-                            newDurability = 0;
-                            await item.setFlag("sunder", "durability", newDurability);
-                            await item.setFlag("sunder", "damaged", true);
-                            console.log(`[Sunder] Updating ${item.name} to Broken (No two-stage)`);
+                        await ChatMessage.create({ content: `<strong>${item.name}</strong> is damaged!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                        ui.notifications.warn(`${item.name} is now DAMAGED! (Durability: ${newDurability})`);
+                        if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
+                    } else {
+                        newDurability = durability - 1;
+                        if (newDurability < 0) newDurability = 0;
+                        await item.setFlag("sunder", "durability", newDurability);
+                        await item.setFlag("sunder", "damaged", true);
+                        if (newDurability <= 0) {
                             updateData.name = `${baseName} (Broken)`;
                             updateData["system.description.value"] = description + `<p><i>This item is broken (${isWeapon ? weaponAttackPenalty * 2 : armorACPenalty * 2} penalty) and unusable until repaired</i></p>`;
                             updateData["system.price.value"] = 0;
@@ -226,74 +123,129 @@ class SunderUI_v2 {
                             } else if (isArmor || isShield) {
                                 effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty * 2 });
                             }
-                            await ChatMessage.create({
-                                content: `<strong>${item.name}</strong> breaks!`,
-                                speaker: { alias: "Sunder" },
-                                style: CONST.CHAT_MESSAGE_STYLES.OOC
-                            });
+                            await ChatMessage.create({ content: `<strong>${item.name}</strong> breaks!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
                             ui.notifications.error(`${item.name} ${game.i18n.localize("sunder.popup.broken")}`);
                             if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
+                        } else {
+                            updateData.name = `${baseName} (Damaged)`;
+                            updateData["system.description.value"] = description + `<p><i>This item is damaged (${isWeapon ? weaponAttackPenalty : armorACPenalty} penalty)</i></p>`;
+                            updateData["system.price.value"] = Math.max(1, Math.floor(basePrice / 2));
+                            if (isWeapon) {
+                                effectData.changes.push({ key: "system.bonuses.mwak.attack", mode: 2, value: weaponAttackPenalty });
+                                effectData.changes.push({ key: "system.bonuses.rwak.attack", mode: 2, value: weaponAttackPenalty });
+                            } else if (isArmor || isShield) {
+                                effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty });
+                            }
+                            await ChatMessage.create({ content: `<strong>${item.name}</strong> is damaged!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                            ui.notifications.warn(`${item.name} is now DAMAGED! (Durability: ${newDurability})`);
+                            if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                         }
-
-                        await actor.updateEmbeddedDocuments("Item", [updateData]);
-                        if (effectData.changes.length > 0) {
-                            await item.createEmbeddedDocuments("ActiveEffect", [effectData]);
-                            console.log(`[Sunder] Created new effect: ${effectData.name} with changes:`, JSON.stringify(effectData.changes));
-                        }
-                        console.log(`[Sunder] Updated item: ${updateData.name}, Durability: ${newDurability}`);
-                    } else {
-                        await ChatMessage.create({
-                            content: `<strong>${item.name}</strong> resists breakage!`,
-                            speaker: { alias: "Sunder" },
-                            style: CONST.CHAT_MESSAGE_STYLES.OOC
-                        });
-                        ui.notifications.info(`${item.name} ${game.i18n.localize("sunder.popup.safe")}`);
-                        if (breakagePassSound) AudioHelper.play({ src: breakagePassSound }, true);
                     }
+                } else {
+                    newDurability = 0;
+                    await item.setFlag("sunder", "durability", newDurability);
+                    await item.setFlag("sunder", "damaged", true);
+                    updateData.name = `${baseName} (Broken)`;
+                    updateData["system.description.value"] = description + `<p><i>This item is broken (${isWeapon ? weaponAttackPenalty * 2 : armorACPenalty * 2} penalty) and unusable until repaired</i></p>`;
+                    updateData["system.price.value"] = 0;
+                    if (isWeapon) {
+                        effectData.changes.push({ key: "system.bonuses.mwak.attack", mode: 2, value: weaponAttackPenalty * 2 });
+                        effectData.changes.push({ key: "system.bonuses.rwak.attack", mode: 2, value: weaponAttackPenalty * 2 });
+                    } else if (isArmor || isShield) {
+                        effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty * 2 });
+                    }
+                    await ChatMessage.create({ content: `<strong>${item.name}</strong> breaks!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                    ui.notifications.error(`${item.name} ${game.i18n.localize("sunder.popup.broken")}`);
+                    if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                 }
-            },
-            cancel: {
-                label: "Ignore",
-                callback: () => {
-                    resolution = 'ignore';
-                    ui.notifications.info("Breakage ignored.");
-                    ChatMessage.create({
-                        content: `<strong>${item.name}</strong> breakage check ignored by GM.`,
-                        speaker: { alias: "Sunder" },
-                        style: CONST.CHAT_MESSAGE_STYLES.OOC
-                    });
+
+                await actor.updateEmbeddedDocuments("Item", [updateData]);
+                if (effectData.changes.length > 0) {
+                    await item.createEmbeddedDocuments("ActiveEffect", [effectData]);
+                    console.log(`[Sunder] Created new effect: ${effectData.name} with changes:`, JSON.stringify(effectData.changes));
                 }
+                console.log(`[Sunder] Updated item: ${updateData.name}, Durability: ${newDurability}`);
+            } else {
+                await ChatMessage.create({ content: `<strong>${item.name}</strong> resists breakage!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                ui.notifications.info(`${item.name} ${game.i18n.localize("sunder.popup.safe")}`);
+                if (breakagePassSound) AudioHelper.play({ src: breakagePassSound }, true);
             }
+            game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "roll" });
         };
 
-        const dialog = new Dialog({
-            title: game.i18n.localize("sunder.popup.title"),
-            content: content,
-            buttons: buttons,
-            default: "cancel",
-            render: (html) => {
-                dialog.setPosition({
-                    top: window.innerHeight * 0.2, 
-                    left: window.innerWidth * 0.35
-                });
-                console.log(`[Sunder] GM dialog positioned at top: ${dialog.position.top}, left: ${dialog.position.left}`);
-            },
-            close: () => {
-                if (resolution === null) {
-                    console.log(`[Sunder] GM dialog for ${item.name} dismissed without action`);
-                }
-                // Notify players to close their dialogs and update UI
-                if (resolution) {
-                    game.socket.emit("module.sunder", {
-                        type: "resolveBreakage",
-                        itemId: item.id,
-                        resolution: resolution
-                    });
-                }
+        // Handle player-specific popups
+        if (affectedUserId && game.user.id === affectedUserId && !game.user.isGM) {
+            if (rollType === "crit" && actor.id !== game.user.character?.id) {
+                // Attacker waiting on defender
+                new Dialog({
+                    title: game.i18n.localize("sunder.popup.title"),
+                    content: content + `<p>Awaiting ${actor.name}'s breakage check for their ${item.name}...</p>`,
+                    buttons: {},
+                    render: (html) => console.log(`[Sunder] Attacker info dialog for ${item.name}`)
+                }).render(true);
+            } else {
+                // Affected player (attacker on fumble, defender on crit)
+                if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
+                new Dialog({
+                    title: game.i18n.localize("sunder.popup.title"),
+                    content: content,
+                    buttons: {
+                        roll: { label: "Roll for Breakage", callback: handleRoll }
+                    },
+                    closeOnEscape: false,
+                    render: (html) => {
+                        html.closest(".app").find(".window-header .close").remove();
+                        console.log(`[Sunder] Player dialog for ${item.name} (roll only)`);
+                    },
+                    close: () => console.log(`[Sunder] Player dialog for ${item.name} closed without action`)
+                }).render(true);
             }
-        });
+        }
 
-        dialog.render(true);
+        // Handle GM popup (always rendered, even if not via socket)
+        if (game.user.id === gmUserId) {
+            if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
+            let resolution = null;
+            const dialog = new Dialog({
+                title: game.i18n.localize("sunder.popup.title"),
+                content: content,
+                buttons: {
+                    roll: { label: "Roll for Breakage", callback: () => { resolution = "roll"; handleRoll(); } },
+                    ignore: { 
+                        label: "Ignore", 
+                        callback: () => {
+                            resolution = "ignore";
+                            ui.notifications.info("Breakage ignored.");
+                            ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM.`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                            game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
+                        }
+                    }
+                },
+                render: (html) => {
+                    dialog.setPosition({ top: window.innerHeight * 0.2, left: window.innerWidth * 0.35 });
+                    console.log(`[Sunder] GM dialog for ${item.name} at top: ${dialog.position.top}, left: ${dialog.position.left}`);
+                },
+                close: () => {
+                    if (!resolution) {
+                        ui.notifications.info("Breakage ignored (dialog closed).");
+                        ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM (dialog closed).`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                        game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
+                    }
+                }
+            });
+            dialog.render(true);
+        } else if (gmUserId) {
+            console.log(`[Sunder] Emitting socket request to GM ${gmUserId} for ${item.name}`);
+            game.socket.emit("module.sunder", {
+                type: "showBreakagePopup",
+                actorId: actor.id,
+                itemId: item.id,
+                isHeavy,
+                gmUserId: gmUser.id,
+                affectedUserId,
+                rollType
+            });
+        }
     }
 }
 
@@ -301,18 +253,17 @@ Hooks.once('init', () => {
     console.log("SunderUI_v2 Module Initialized");
     game.sunderUI = SunderUI_v2;
 
-    // Socket handler for GM requests and player dialog resolution
     game.socket.on("module.sunder", async (data) => {
-        if (data.type === "showBreakagePopup" && game.user.id === data.userId) {
+        if (data.type === "showBreakagePopup" && game.user.id === data.gmUserId) {
+            console.log(`[Sunder] GM received socket request for actor ${data.actorId}, item ${data.itemId}`);
             const actor = game.actors.get(data.actorId);
             const item = actor?.items.get(data.itemId);
             if (actor && item) {
-                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.userId);
+                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.gmUserId, data.affectedUserId, data.rollType);
             } else {
                 console.error("[Sunder] Failed to find actor or item for breakage popup:", data);
             }
         } else if (data.type === "resolveBreakage" && !game.user.isGM) {
-            // Close player dialog when GM resolves
             const dialog = Object.values(ui.windows).find(w => w.title === game.i18n.localize("sunder.popup.title"));
             if (dialog) {
                 dialog.close();

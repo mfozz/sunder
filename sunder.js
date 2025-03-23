@@ -23,7 +23,6 @@ class Sunder {
             console.log("[Sunder] No MIDI QOL detected");
         }
 
-        // Register the hook for adding the Repair button to item sheets
         Hooks.on("getItemSheetHeaderButtons", (sheet, buttons) => {
             this.onGetItemSheetHeaderButtons(sheet, buttons);
         });
@@ -82,7 +81,7 @@ class Sunder {
 
         game.settings.register("sunder", "durabilityByRarity", {
             name: game.i18n.localize("sunder.settings.durabilityByRarity.name"),
-            hint: "", // Empty to prevent Foundry's default hint
+            hint: "",
             scope: "world",
             config: true,
             type: String,
@@ -299,32 +298,22 @@ class Sunder {
         const isRoll = message.flags?.core?.RollTable || message.rolls;
         console.log("[Sunder] Is this a roll?", !!isRoll);
         if (!isRoll) return;
-    
+
         const isAttackRoll = message.flags?.dnd5e?.roll?.type === "attack";
         console.log("[Sunder] Is attack roll?", isAttackRoll, "Flags:", message.flags?.dnd5e);
         if (!isAttackRoll) return;
-    
+
         const roll = message.rolls?.[0];
-        const rollTotal = roll?.total; // Use the final roll total, not the first die
+        const rollTotal = roll?.total;
         console.log("[Sunder] Roll data:", roll, "Final result:", rollTotal);
         if (rollTotal === undefined) return;
-    
-        // Check for a target before proceeding
-        if (game.user.targets.size === 0) {
-            console.log("[Sunder] No target selected, skipping breakage check.");
-            return;
-        }
-    
-        const threshold = game.settings.get("sunder", "breakageThreshold");
-        const criticalThreshold = game.settings.get("sunder", "criticalBreakageThreshold");
-        console.log("[Sunder] Thresholds:", threshold, criticalThreshold, "Result:", rollTotal);
-    
+
         const speaker = ChatMessage.getSpeaker();
         console.log("[Sunder] Speaker:", speaker);
         const token = canvas.tokens.get(speaker.token);
         const attacker = token ? token.actor : game.actors.get(speaker.actor);
         console.log("[Sunder] Attacker:", attacker?.name || "None", "Using token:", !!token);
-    
+
         let weaponItem;
         const itemId = message.flags?.dnd5e?.item?.id || message.flags?.dnd5e?.roll?.itemId;
         console.log("[Sunder] Weapon ID from roll flags:", itemId);
@@ -341,7 +330,7 @@ class Sunder {
         }
         const isHeavy = weaponItem?.system.properties?.has("hvy") || false;
         console.log("[Sunder] Attacker weapon:", weaponItem?.name || "None", "Is Heavy:", isHeavy);
-    
+
         await this._triggerBreakage(attacker, rollTotal, isHeavy);
     }
 
@@ -352,113 +341,64 @@ class Sunder {
             console.log("[Sunder] No attack roll found in workflow.");
             return;
         }
-    
-        const rollTotal = workflow.attackTotal || roll.total; // Use MIDI-QOL's final total if available, else roll.total
+
+        const rollTotal = workflow.attackTotal || roll.total;
         console.log("[Sunder] MIDI Roll data:", roll, "Final result:", rollTotal);
         if (rollTotal === undefined) return;
-    
-        // Check for a target before proceeding
-        if (!workflow.targets || workflow.targets.size === 0) {
-            console.log("[Sunder] No target selected in MIDI QOL workflow, skipping breakage check.");
-            return;
-        }
-    
+
         const attacker = workflow.actor;
         console.log("[Sunder] MIDI Attacker:", attacker?.name);
-    
+
         const isHeavy = workflow.item?.system.properties?.has("hvy") || false;
         console.log("[Sunder] MIDI Attacker weapon:", workflow.item?.name || "None", "Is Heavy:", isHeavy);
-    
+
         await this._triggerBreakage(attacker, rollTotal, isHeavy);
     }
 
-    async _triggerBreakage(attacker, rawDieResult, isHeavy) {
+    async _triggerBreakage(attacker, rollTotal, isHeavy) {
         const threshold = game.settings.get("sunder", "breakageThreshold");
         const criticalThreshold = game.settings.get("sunder", "criticalBreakageThreshold");
         const enableWeaponBreakage = game.settings.get("sunder", "enableWeaponBreakage");
         const enableArmorBreakage = game.settings.get("sunder", "enableArmorBreakage");
-        console.log("[Sunder] TriggerBreakage - Thresholds:", threshold, criticalThreshold, "Result:", rawDieResult);
 
-        let itemType, item, targetActor;
-        const durabilityByRarityRaw = game.settings.get("sunder", "durabilityByRarity");
-        let durabilityByRarity;
-        try {
-            durabilityByRarity = JSON.parse(durabilityByRarityRaw);
-        } catch (e) {
-            durabilityByRarity = { common: 1, uncommon: 2, rare: 3, veryRare: 4, legendary: 5 };
-            console.error("[Sunder] Failed to parse durabilityByRarity, using default:", e);
-        }
+        let itemType, item, targetActor, affectedUserId, rollType, attackerUserId;
+        const gmUser = game.users.find(u => u.isGM && u.active);
 
-        if (rawDieResult <= threshold && enableWeaponBreakage) {
+        if (rollTotal <= threshold && enableWeaponBreakage) {
             itemType = "weapon";
             targetActor = attacker;
-            console.log("[Sunder] Low roll detected, targeting weapon for:", targetActor?.name);
-            if (!targetActor) {
-                console.log("[Sunder] No attacker found.");
-                return;
-            }
             item = targetActor.items.find(i => i.type === "weapon" && i.system.equipped);
-            console.log("[Sunder] Selected weapon:", item?.name || "None");
-            if (!item) {
-                console.log("[Sunder] No matching equipped weapon found.");
-                return;
-            }
-            console.log("[Sunder] Triggering Breakage Popup for weapon:", item.name);
-        } else if (rawDieResult >= criticalThreshold && enableArmorBreakage) {
+            affectedUserId = game.users.find(u => u.character?.id === attacker.id || (attacker.ownership[u.id] === 3))?.id;
+            rollType = "fumble";
+            attackerUserId = affectedUserId;
+        } else if (rollTotal >= criticalThreshold && enableArmorBreakage) {
             itemType = "armor";
             const targets = game.user.targets.size > 0 ? Array.from(game.user.targets) : [];
-            console.log("[Sunder] Targets:", targets.map(t => t.actor?.name));
             targetActor = targets.length > 0 ? targets[0].actor : null;
             if (!targetActor) {
-                console.log("[Sunder] No target found for critical hit. Active targets:", game.user.targets.size);
+                console.log("[Sunder] No target found for crit breakage check.");
                 return;
             }
-
-            console.log("[Sunder] Equipped Items:", targetActor.items.map(i => ({
-                name: i.name,
-                type: i.type,
-                equipped: i.system.equipped,
-                armorValue: i.system.armor?.value,
-                shield: i.system.type?.value === "shield",
-                armorType: i.system.armor?.type,
-                durability: i.getFlag("sunder", "durability"),
-                damaged: i.getFlag("sunder", "damaged")
-            })));
-
             item = targetActor.items.find(i => 
-                i.type === "equipment" && 
-                i.system.equipped && 
-                (i.system.type?.value === "shield" || i.system.armor?.type === "shield") &&
+                i.type === "equipment" && i.system.equipped && 
+                (i.system.type?.value === "shield" || i.system.armor?.value > 0) && 
                 !i.name.includes("(Broken)")
             );
-            if (!item) {
-                item = targetActor.items.find(i => 
-                    i.type === "equipment" && 
-                    i.system.equipped && 
-                    i.system.type?.value !== "shield" && 
-                    i.system.armor?.value > 0 &&
-                    !i.name.includes("(Broken)")
-                );
-            }
-
-            console.log("[Sunder] Found equipped", itemType, ":", item?.name || "None");
-            if (!item) {
-                console.log("[Sunder] No valid armor or shield found for breakage.");
-                return;
-            }
-            console.log("[Sunder] Triggering Breakage Popup for", itemType, ":", item.name);
+            affectedUserId = game.users.find(u => u.character?.id === targetActor.id || (targetActor.ownership[u.id] === 3))?.id;
+            rollType = "crit";
+            attackerUserId = game.users.find(u => u.character?.id === attacker.id || (attacker.ownership[u.id] === 3))?.id;
         } else {
             console.log("[Sunder] Roll does not meet breakage thresholds or mechanic disabled.");
             return;
         }
 
-        if (!game.sunderUI?.showBreakagePopup) {
-            console.error("[Sunder] Error: game.sunderUI.showBreakagePopup is not available.");
+        if (!item || !targetActor) {
+            console.log("[Sunder] No valid item or target actor found for breakage.");
             return;
         }
-        console.log("[Sunder] Calling showBreakagePopup with:", { actor: targetActor.name, item: item.name, isHeavy });
-        await game.sunderUI.showBreakagePopup(targetActor, item, isHeavy);
-        console.log("[Sunder] Breakage Popup completed.");
+
+        console.log(`[Sunder] Triggering breakage popup: actor=${targetActor.name}, item=${item.name}, rollType=${rollType}, affectedUser=${affectedUserId}, attackerUser=${attackerUserId}`);
+        await game.sunderUI.showBreakagePopup(targetActor, item, isHeavy, gmUser?.id, affectedUserId, rollType, attackerUserId);
     }
 }
 
@@ -467,7 +407,6 @@ Hooks.once('init', () => {
     game.sunder = new Sunder();
 });
 
-// Register socket handler for breakage popup requests at the top level
 Hooks.on("init", () => {
     game.socket.on("module.sunder", async (data) => {
         if (data.type === "showBreakagePopup" && game.user.id === data.userId) {

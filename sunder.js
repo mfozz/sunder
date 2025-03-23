@@ -22,11 +22,15 @@ class Sunder {
         } else {
             console.log("[Sunder] No MIDI QOL detected");
         }
+
+        // Register the hook for adding the Repair button to item sheets
+        Hooks.on("getItemSheetHeaderButtons", (sheet, buttons) => {
+            this.onGetItemSheetHeaderButtons(sheet, buttons);
+        });
     }
 
     registerSettings() {
         console.log("[Sunder] Registering settings");
-       
        
         game.settings.register("sunder", "enableWeaponBreakage", {
             name: game.i18n.localize("sunder.settings.enableWeaponBreakage.name"),
@@ -177,8 +181,6 @@ class Sunder {
             default: "sounds/combat/epic-turn-2hit.ogg"
         });
 
-
-
         Hooks.on("renderSettingsConfig", (app, html) => {
             console.log("[Sunder] Rendering settings config");
             const durabilitySetting = html.find(`[name="sunder.durabilityByRarity"]`).closest('.form-group');
@@ -307,6 +309,12 @@ class Sunder {
         console.log("[Sunder] Roll data:", roll, "Raw result:", rawDieResult);
         if (rawDieResult === undefined) return;
 
+        // Check for a target before proceeding
+        if (game.user.targets.size === 0) {
+            console.log("[Sunder] No target selected, skipping breakage check.");
+            return;
+        }
+
         const threshold = game.settings.get("sunder", "breakageThreshold");
         const criticalThreshold = game.settings.get("sunder", "criticalBreakageThreshold");
         console.log("[Sunder] Thresholds:", threshold, criticalThreshold, "Result:", rawDieResult);
@@ -348,6 +356,12 @@ class Sunder {
         const rawDieResult = roll.terms?.[0]?.results?.[0]?.result;
         console.log("[Sunder] MIDI Roll data:", roll, "Raw result:", rawDieResult);
         if (rawDieResult === undefined) return;
+
+        // Check for a target before proceeding
+        if (!workflow.targets || workflow.targets.size === 0) {
+            console.log("[Sunder] No target selected in MIDI QOL workflow, skipping breakage check.");
+            return;
+        }
 
         const attacker = workflow.actor;
         console.log("[Sunder] MIDI Attacker:", attacker?.name);

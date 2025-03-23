@@ -1,12 +1,11 @@
 class SunderUI_v2 {
-    static async showBreakagePopup(actor, item, isHeavy = false, gmUserId = null, affectedUserId = null, rollType = null) {
+    static async showBreakagePopup(actor, item, isHeavy = false, gmUserId = null, affectedUserId = null, rollType = null, attackerUserId = null) {
         const gmUser = game.users.find(u => u.id === gmUserId && u.isGM && u.active);
         if (!gmUser) {
             ui.notifications.error("No active GM found to handle the breakage check.");
             return;
         }
-
-        // Shared settings and item data
+    
         const breakageDC = game.settings.get("sunder", "breakageDC");
         const durabilityByRarityRaw = game.settings.get("sunder", "durabilityByRarity");
         const twoStageBreakage = game.settings.get("sunder", "twoStageBreakage");
@@ -27,7 +26,7 @@ class SunderUI_v2 {
         const baseDurability = durabilityByRarity[rarity] || 3;
         let durability = item.getFlag("sunder", "durability");
         const isDamaged = item.getFlag("sunder", "damaged") || false;
-
+    
         if (durability === undefined || durability === null || typeof durability !== "number") {
             console.log(`[Sunder] Invalid durability for ${item.name}: ${durability}, resetting to ${baseDurability}`);
             durability = baseDurability;
@@ -35,7 +34,7 @@ class SunderUI_v2 {
             await item.setFlag("sunder", "damaged", false);
             console.log(`[Sunder] Initialized durability for ${item.name} to ${durability} (rarity: ${rarity})`);
         }
-
+    
         const isWeapon = item.type === "weapon";
         const isShield = item.type === "equipment" && item.system.type?.value === "shield";
         const isArmor = item.type === "equipment" && item.system.type?.value !== "shield" && (item.system.armor?.value > 0 || item.system.armor?.type === "armor");
@@ -48,7 +47,7 @@ class SunderUI_v2 {
             : "";
         const previewImage = item.getFlag("sunder", "previewImage") || item.img || "icons/svg/mystery-man.svg";
         const color = isDamaged ? "orange" : "inherit";
-
+    
         const content = `
             <div class="sunder-breakage-popup">
                 <img src="${previewImage}" class="sunder-preview-image" alt="${baseName}" />
@@ -59,8 +58,7 @@ class SunderUI_v2 {
                 </div>
             </div>
         `;
-
-        // Roll logic shared between GM and player
+    
         const handleRoll = async () => {
             const rollFormula = isHeavy ? `1d20+${heavyBonus}` : "1d20";
             const roll = await new Roll(rollFormula).evaluate();
@@ -70,7 +68,7 @@ class SunderUI_v2 {
             });
             const rollResult = roll.total;
             console.log(`[Sunder] Roll result: ${rollResult}, DC: ${breakageDC}, Heavy: ${isHeavy}`);
-
+    
             if (rollResult < breakageDC) {
                 let newDurability = durability;
                 let updateData = { _id: item.id };
@@ -82,14 +80,14 @@ class SunderUI_v2 {
                     changes: [],
                     disabled: false
                 };
-
+    
                 const existingEffects = item.effects.filter(e => e.name.includes("Sunder"));
                 for (const effect of existingEffects) await effect.delete();
                 description = description.replace(/<p><i>This item is (damaged|broken) \(-\d penalty\).*<\/i><\/p>/, "");
-
+    
                 const basePrice = item.system.price?.value || 1;
                 if (!item.getFlag("sunder", "originalPrice")) await item.setFlag("sunder", "originalPrice", basePrice);
-
+    
                 if (twoStageBreakage && (isWeapon || isArmor || isShield)) {
                     if (!isDamaged) {
                         newDurability = durability - 1;
@@ -158,7 +156,7 @@ class SunderUI_v2 {
                     ui.notifications.error(`${item.name} ${game.i18n.localize("sunder.popup.broken")}`);
                     if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                 }
-
+    
                 await actor.updateEmbeddedDocuments("Item", [updateData]);
                 if (effectData.changes.length > 0) {
                     await item.createEmbeddedDocuments("ActiveEffect", [effectData]);
@@ -172,49 +170,86 @@ class SunderUI_v2 {
             }
             game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "roll" });
         };
-
-        // Handle player-specific popups
-        if (affectedUserId && game.user.id === affectedUserId && !game.user.isGM) {
-            if (rollType === "crit" && actor.id !== game.user.character?.id) {
-                // Attacker waiting on defender
-                new Dialog({
-                    title: game.i18n.localize("sunder.popup.title"),
-                    content: content + `<p>Awaiting ${actor.name}'s breakage check for their ${item.name}...</p>`,
-                    buttons: {},
-                    render: (html) => console.log(`[Sunder] Attacker info dialog for ${item.name}`)
-                }).render(true);
-            } else {
-                // Affected player (attacker on fumble, defender on crit)
-                if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
-                new Dialog({
-                    title: game.i18n.localize("sunder.popup.title"),
-                    content: content,
-                    buttons: {
-                        roll: { label: "Roll for Breakage", callback: handleRoll }
-                    },
-                    closeOnEscape: false,
-                    render: (html) => {
-                        html.closest(".app").find(".window-header .close").remove();
-                        console.log(`[Sunder] Player dialog for ${item.name} (roll only)`);
-                    },
-                    close: () => console.log(`[Sunder] Player dialog for ${item.name} closed without action`)
-                }).render(true);
-            }
-        }
-
-        // Handle GM popup (always rendered, even if not via socket)
-        if (game.user.id === gmUserId) {
+    
+        // Player popup (affected user: attacker on fumble, defender on crit)
+        if (affectedUserId && game.user.id === affectedUserId) {
             if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
-            let resolution = null;
+            let rolled = false; // Track if a roll occurred
+            new Dialog({
+                title: game.i18n.localize("sunder.popup.title"),
+                content: content,
+                buttons: game.user.isGM ? {
+                    roll: { 
+                        label: "Roll for Breakage", 
+                        callback: async () => {
+                            rolled = true;
+                            await handleRoll();
+                        }
+                    },
+                    ignore: { 
+                        label: "Ignore", 
+                        callback: () => {
+                            rolled = true; // Treat ignore as a resolution
+                            ui.notifications.info("Breakage ignored.");
+                            ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM.`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                            game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
+                        }
+                    }
+                } : {
+                    roll: { 
+                        label: "Roll for Breakage", 
+                        callback: async () => {
+                            rolled = true;
+                            await handleRoll();
+                        }
+                    }
+                },
+                closeOnEscape: !game.user.isGM,
+                render: (html) => {
+                    if (!game.user.isGM) html.closest(".app").find(".window-header .close").remove();
+                    console.log(`[Sunder] ${game.user.isGM ? "GM" : "Player"} dialog for ${item.name} (${game.user.isGM ? "full" : "roll only"})`);
+                },
+                close: () => {
+                    if (game.user.isGM && !rolled) {
+                        ui.notifications.info("Breakage ignored (dialog closed).");
+                        ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM (dialog closed).`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                        game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
+                    } else if (!game.user.isGM) {
+                        console.log(`[Sunder] Player dialog for ${item.name} closed without action`);
+                    }
+                }
+            }).render(true);
+        }
+    
+        // Crit attacker info popup
+        if (rollType === "crit" && attackerUserId && game.user.id === attackerUserId && game.user.id !== affectedUserId && !game.user.isGM) {
+            new Dialog({
+                title: game.i18n.localize("sunder.popup.title"),
+                content: content + `<p>Awaiting ${actor.name}'s breakage check for their ${item.name}...</p>`,
+                buttons: {},
+                render: (html) => console.log(`[Sunder] Attacker info dialog for ${item.name}`)
+            }).render(true);
+        }
+    
+        // GM popup (if not the affected user)
+        if (game.user.id === gmUserId && game.user.id !== affectedUserId) {
+            if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
+            let rolled = false;
             const dialog = new Dialog({
                 title: game.i18n.localize("sunder.popup.title"),
                 content: content,
                 buttons: {
-                    roll: { label: "Roll for Breakage", callback: () => { resolution = "roll"; handleRoll(); } },
+                    roll: { 
+                        label: "Roll for Breakage", 
+                        callback: async () => {
+                            rolled = true;
+                            await handleRoll();
+                        }
+                    },
                     ignore: { 
                         label: "Ignore", 
                         callback: () => {
-                            resolution = "ignore";
+                            rolled = true;
                             ui.notifications.info("Breakage ignored.");
                             ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM.`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
                             game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
@@ -226,7 +261,7 @@ class SunderUI_v2 {
                     console.log(`[Sunder] GM dialog for ${item.name} at top: ${dialog.position.top}, left: ${dialog.position.left}`);
                 },
                 close: () => {
-                    if (!resolution) {
+                    if (!rolled) {
                         ui.notifications.info("Breakage ignored (dialog closed).");
                         ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM (dialog closed).`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
                         game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
@@ -234,7 +269,7 @@ class SunderUI_v2 {
                 }
             });
             dialog.render(true);
-        } else if (gmUserId) {
+        } else if (gmUserId && game.user.id !== gmUserId) {
             console.log(`[Sunder] Emitting socket request to GM ${gmUserId} for ${item.name}`);
             game.socket.emit("module.sunder", {
                 type: "showBreakagePopup",
@@ -243,7 +278,8 @@ class SunderUI_v2 {
                 isHeavy,
                 gmUserId: gmUser.id,
                 affectedUserId,
-                rollType
+                rollType,
+                attackerUserId
             });
         }
     }
@@ -259,7 +295,7 @@ Hooks.once('init', () => {
             const actor = game.actors.get(data.actorId);
             const item = actor?.items.get(data.itemId);
             if (actor && item) {
-                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.gmUserId, data.affectedUserId, data.rollType);
+                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.gmUserId, data.affectedUserId, data.rollType, data.attackerUserId);
             } else {
                 console.error("[Sunder] Failed to find actor or item for breakage popup:", data);
             }

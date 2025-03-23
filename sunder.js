@@ -364,11 +364,16 @@ class Sunder {
         let itemType, item, targetActor, affectedUserId, rollType, attackerUserId;
         const gmUser = game.users.find(u => u.isGM && u.active);
 
+        // Determine the user who initiated the roll
+        const rollingUser = game.user;
+
         if (rollTotal <= threshold && enableWeaponBreakage) {
             itemType = "weapon";
             targetActor = attacker;
             item = targetActor.items.find(i => i.type === "weapon" && i.system.equipped);
-            affectedUserId = game.users.find(u => u.character?.id === attacker.id || (attacker.ownership[u.id] === 3))?.id;
+            affectedUserId = rollingUser.character?.id === attacker.id || attacker.ownership[rollingUser.id] === 3
+                ? rollingUser.id
+                : game.users.find(u => u.character?.id === attacker.id || attacker.ownership[u.id] === 3)?.id;
             rollType = "fumble";
             attackerUserId = affectedUserId;
         } else if (rollTotal >= criticalThreshold && enableArmorBreakage) {
@@ -384,9 +389,11 @@ class Sunder {
                 (i.system.type?.value === "shield" || i.system.armor?.value > 0) && 
                 !i.name.includes("(Broken)")
             );
-            affectedUserId = game.users.find(u => u.character?.id === targetActor.id || (targetActor.ownership[u.id] === 3))?.id;
+            affectedUserId = game.users.find(u => u.character?.id === targetActor.id || targetActor.ownership[u.id] === 3)?.id;
             rollType = "crit";
-            attackerUserId = game.users.find(u => u.character?.id === attacker.id || (attacker.ownership[u.id] === 3))?.id;
+            attackerUserId = rollingUser.character?.id === attacker.id || attacker.ownership[rollingUser.id] === 3
+                ? rollingUser.id
+                : game.users.find(u => u.character?.id === attacker.id || attacker.ownership[u.id] === 3)?.id;
         } else {
             console.log("[Sunder] Roll does not meet breakage thresholds or mechanic disabled.");
             return;
@@ -397,7 +404,7 @@ class Sunder {
             return;
         }
 
-        console.log(`[Sunder] Triggering breakage popup: actor=${targetActor.name}, item=${item.name}, rollType=${rollType}, affectedUser=${affectedUserId}, attackerUser=${attackerUserId}`);
+        console.log(`[Sunder] Triggering breakage popup: actor=${targetActor.name}, item=${item.name}, rollType=${rollType}, affectedUser=${affectedUserId}, attackerUser=${attackerUserId}, gmUser=${gmUser?.id}`);
         await game.sunderUI.showBreakagePopup(targetActor, item, isHeavy, gmUser?.id, affectedUserId, rollType, attackerUserId);
     }
 }
@@ -409,11 +416,12 @@ Hooks.once('init', () => {
 
 Hooks.on("init", () => {
     game.socket.on("module.sunder", async (data) => {
-        if (data.type === "showBreakagePopup" && game.user.id === data.userId) {
+        if (data.type === "showBreakagePopup" && game.user.id === data.gmUserId) {
+            console.log(`[Sunder] GM received socket request for actor ${data.actorId}, item ${data.itemId}`);
             const actor = game.actors.get(data.actorId);
             const item = actor?.items.get(data.itemId);
             if (actor && item) {
-                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.userId);
+                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.gmUserId, data.affectedUserId, data.rollType, data.attackerUserId);
             } else {
                 console.error("[Sunder] Failed to find actor or item for breakage popup:", data);
             }

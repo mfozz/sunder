@@ -1,0 +1,32 @@
+{
+  "id": "sunder",
+  "title": "Sunder",
+  "description": "Automates weapon and armor breakage with durability tracking and customizable effects",
+  "version": "1.0.0",
+  "author": "Malefactory Games",
+  "esmodules": ["sunder-ui.js", "sunder.js"],
+    "manifest": "https://github.com/mfozz/sunder/releases/latest/module.json",
+    "download": "https://github.com/mfozz/sunder/releases/download/1.0.0/module.zip",
+  "compatibility": {
+      "minimum": "12",
+      "verified": "12.99"
+  },
+  "styles": ["styles.css"],
+  "packs": [
+{
+  "name": "sunder-macros",
+  "label": "Sunder Macros",
+  "path": "./packs/sunder-macros.db",
+  "type": "Macro"
+}
+],
+
+  "languages": [
+      {
+          "lang": "en",
+          "name": "English",
+          "path": "lang/en.json"
+      }
+  ]
+
+}

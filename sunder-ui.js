@@ -59,20 +59,20 @@ class SunderUI_v2 {
             </div>
         `;
     
-        const handleRoll = async () => {
+        const handleRoll = async (targetActor, targetItem) => {
             const rollFormula = isHeavy ? `1d20+${heavyBonus}` : "1d20";
             const roll = await new Roll(rollFormula).evaluate();
             await roll.toMessage({ 
-                flavor: `Breakage Roll for ${item.name}${isHeavy ? ` (Heavy Weapon Bonus +${heavyBonus})` : ""}`,
-                speaker: ChatMessage.getSpeaker({ actor })
+                flavor: `Breakage Roll for ${targetItem.name}${isHeavy ? ` (Heavy Weapon Bonus +${heavyBonus})` : ""}`,
+                speaker: ChatMessage.getSpeaker({ actor: targetActor })
             });
             const rollResult = roll.total;
             console.log(`[Sunder] Roll result: ${rollResult}, DC: ${breakageDC}, Heavy: ${isHeavy}`);
     
             if (rollResult < breakageDC) {
                 let newDurability = durability;
-                let updateData = { _id: item.id };
-                let description = item.system.description.value || "";
+                let updateData = { _id: targetItem.id };
+                let description = targetItem.system.description.value || "";
                 let effectData = {
                     name: `Sunder: ${baseName}`,
                     icon: "icons/svg/downgrade.svg",
@@ -81,19 +81,19 @@ class SunderUI_v2 {
                     disabled: false
                 };
     
-                const existingEffects = item.effects.filter(e => e.name.includes("Sunder"));
+                const existingEffects = targetItem.effects.filter(e => e.name.includes("Sunder"));
                 for (const effect of existingEffects) await effect.delete();
                 description = description.replace(/<p><i>This item is (damaged|broken) \(-\d penalty\).*<\/i><\/p>/, "");
     
-                const basePrice = item.system.price?.value || 1;
-                if (!item.getFlag("sunder", "originalPrice")) await item.setFlag("sunder", "originalPrice", basePrice);
+                const basePrice = targetItem.system.price?.value || 1;
+                if (!targetItem.getFlag("sunder", "originalPrice")) await targetItem.setFlag("sunder", "originalPrice", basePrice);
     
                 if (twoStageBreakage && (isWeapon || isArmor || isShield)) {
                     if (!isDamaged) {
                         newDurability = durability - 1;
                         if (newDurability < 0) newDurability = 0;
-                        await item.setFlag("sunder", "durability", newDurability);
-                        await item.setFlag("sunder", "damaged", true);
+                        await targetItem.setFlag("sunder", "durability", newDurability);
+                        await targetItem.setFlag("sunder", "damaged", true);
                         updateData.name = `${baseName} (Damaged)`;
                         updateData["system.description.value"] = description + `<p><i>This item is damaged (${isWeapon ? weaponAttackPenalty : armorACPenalty} penalty)</i></p>`;
                         updateData["system.price.value"] = Math.max(1, Math.floor(basePrice / 2));
@@ -103,14 +103,14 @@ class SunderUI_v2 {
                         } else if (isArmor || isShield) {
                             effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty });
                         }
-                        await ChatMessage.create({ content: `<strong>${item.name}</strong> is damaged!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
-                        ui.notifications.warn(`${item.name} is now DAMAGED! (Durability: ${newDurability})`);
+                        await ChatMessage.create({ content: `<strong>${targetItem.name}</strong> is damaged!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                        ui.notifications.warn(`${targetItem.name} is now DAMAGED! (Durability: ${newDurability})`);
                         if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                     } else {
                         newDurability = durability - 1;
                         if (newDurability < 0) newDurability = 0;
-                        await item.setFlag("sunder", "durability", newDurability);
-                        await item.setFlag("sunder", "damaged", true);
+                        await targetItem.setFlag("sunder", "durability", newDurability);
+                        await targetItem.setFlag("sunder", "damaged", true);
                         if (newDurability <= 0) {
                             updateData.name = `${baseName} (Broken)`;
                             updateData["system.description.value"] = description + `<p><i>This item is broken (${isWeapon ? weaponAttackPenalty * 2 : armorACPenalty * 2} penalty) and unusable until repaired</i></p>`;
@@ -121,8 +121,8 @@ class SunderUI_v2 {
                             } else if (isArmor || isShield) {
                                 effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty * 2 });
                             }
-                            await ChatMessage.create({ content: `<strong>${item.name}</strong> breaks!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
-                            ui.notifications.error(`${item.name} ${game.i18n.localize("sunder.popup.broken")}`);
+                            await ChatMessage.create({ content: `<strong>${targetItem.name}</strong> breaks!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                            ui.notifications.error(`${targetItem.name} ${game.i18n.localize("sunder.popup.broken")}`);
                             if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                         } else {
                             updateData.name = `${baseName} (Damaged)`;
@@ -134,15 +134,15 @@ class SunderUI_v2 {
                             } else if (isArmor || isShield) {
                                 effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty });
                             }
-                            await ChatMessage.create({ content: `<strong>${item.name}</strong> is damaged!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
-                            ui.notifications.warn(`${item.name} is now DAMAGED! (Durability: ${newDurability})`);
+                            await ChatMessage.create({ content: `<strong>${targetItem.name}</strong> is damaged!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                            ui.notifications.warn(`${targetItem.name} is now DAMAGED! (Durability: ${newDurability})`);
                             if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                         }
                     }
                 } else {
                     newDurability = 0;
-                    await item.setFlag("sunder", "durability", newDurability);
-                    await item.setFlag("sunder", "damaged", true);
+                    await targetItem.setFlag("sunder", "durability", newDurability);
+                    await targetItem.setFlag("sunder", "damaged", true);
                     updateData.name = `${baseName} (Broken)`;
                     updateData["system.description.value"] = description + `<p><i>This item is broken (${isWeapon ? weaponAttackPenalty * 2 : armorACPenalty * 2} penalty) and unusable until repaired</i></p>`;
                     updateData["system.price.value"] = 0;
@@ -152,29 +152,29 @@ class SunderUI_v2 {
                     } else if (isArmor || isShield) {
                         effectData.changes.push({ key: "system.attributes.ac.bonus", mode: 2, value: armorACPenalty * 2 });
                     }
-                    await ChatMessage.create({ content: `<strong>${item.name}</strong> breaks!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
-                    ui.notifications.error(`${item.name} ${game.i18n.localize("sunder.popup.broken")}`);
+                    await ChatMessage.create({ content: `<strong>${targetItem.name}</strong> breaks!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                    ui.notifications.error(`${targetItem.name} ${game.i18n.localize("sunder.popup.broken")}`);
                     if (breakageFailSound) AudioHelper.play({ src: breakageFailSound }, true);
                 }
     
-                await actor.updateEmbeddedDocuments("Item", [updateData]);
+                await targetActor.updateEmbeddedDocuments("Item", [updateData]);
                 if (effectData.changes.length > 0) {
-                    await item.createEmbeddedDocuments("ActiveEffect", [effectData]);
+                    await targetItem.createEmbeddedDocuments("ActiveEffect", [effectData]);
                     console.log(`[Sunder] Created new effect: ${effectData.name} with changes:`, JSON.stringify(effectData.changes));
                 }
                 console.log(`[Sunder] Updated item: ${updateData.name}, Durability: ${newDurability}`);
             } else {
-                await ChatMessage.create({ content: `<strong>${item.name}</strong> resists breakage!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
-                ui.notifications.info(`${item.name} ${game.i18n.localize("sunder.popup.safe")}`);
+                await ChatMessage.create({ content: `<strong>${targetItem.name}</strong> resists breakage!`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
+                ui.notifications.info(`${targetItem.name} ${game.i18n.localize("sunder.popup.safe")}`);
                 if (breakagePassSound) AudioHelper.play({ src: breakagePassSound }, true);
             }
-            game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "roll" });
+            game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: targetItem.id, resolution: "roll" });
         };
     
         // Player popup (affected user: attacker on fumble, defender on crit)
         if (affectedUserId && game.user.id === affectedUserId) {
             if (breakageSound) AudioHelper.play({ src: breakageSound }, true);
-            let rolled = false; // Track if a roll occurred
+            let rolled = false;
             new Dialog({
                 title: game.i18n.localize("sunder.popup.title"),
                 content: content,
@@ -183,13 +183,13 @@ class SunderUI_v2 {
                         label: "Roll for Breakage", 
                         callback: async () => {
                             rolled = true;
-                            await handleRoll();
+                            await handleRoll(actor, item);
                         }
                     },
                     ignore: { 
                         label: "Ignore", 
                         callback: () => {
-                            rolled = true; // Treat ignore as a resolution
+                            rolled = true;
                             ui.notifications.info("Breakage ignored.");
                             ChatMessage.create({ content: `<strong>${item.name}</strong> breakage check ignored by GM.`, speaker: { alias: "Sunder" }, style: CONST.CHAT_MESSAGE_STYLES.OOC });
                             game.socket.emit("module.sunder", { type: "resolveBreakage", itemId: item.id, resolution: "ignore" });
@@ -200,7 +200,7 @@ class SunderUI_v2 {
                         label: "Roll for Breakage", 
                         callback: async () => {
                             rolled = true;
-                            await handleRoll();
+                            await handleRoll(actor, item);
                         }
                     }
                 },
@@ -243,7 +243,7 @@ class SunderUI_v2 {
                         label: "Roll for Breakage", 
                         callback: async () => {
                             rolled = true;
-                            await handleRoll();
+                            await handleRoll(actor, item);
                         }
                     },
                     ignore: { 

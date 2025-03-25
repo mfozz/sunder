@@ -363,18 +363,17 @@ class Sunder {
     
         let itemType, item, targetActor, affectedUserId, rollType, attackerUserId;
         const gmUser = game.users.find(u => u.isGM && u.active);
-    
-        // Determine the user who initiated the roll
         const rollingUser = game.user;
+    
+        console.log(`[Sunder] Attacker ownership: ${JSON.stringify(attacker.ownership)}, Rolling user: ${rollingUser.id}`);
     
         if (rollTotal <= threshold && enableWeaponBreakage) {
             itemType = "weapon";
             targetActor = attacker;
             item = targetActor.items.find(i => i.type === "weapon" && i.system.equipped);
-            // Use rolling user if they have any control over the attacker; otherwise, find an owner
             affectedUserId = rollingUser && (rollingUser.character?.id === attacker.id || attacker.ownership[rollingUser.id] >= 1)
                 ? rollingUser.id
-                : game.users.find(u => u.character?.id === attacker.id || attacker.ownership[u.id] >= 1)?.id || gmUser?.id;
+                : game.users.find(u => !u.isGM && (u.character?.id === attacker.id || attacker.ownership[u.id] >= 1))?.id || gmUser?.id;
             rollType = "fumble";
             attackerUserId = affectedUserId;
         } else if (rollTotal >= criticalThreshold && enableArmorBreakage) {
@@ -385,16 +384,17 @@ class Sunder {
                 console.log("[Sunder] No target found for crit breakage check.");
                 return;
             }
+            console.log(`[Sunder] Target ownership: ${JSON.stringify(targetActor.ownership)}`);
             item = targetActor.items.find(i => 
                 i.type === "equipment" && i.system.equipped && 
                 (i.system.type?.value === "shield" || i.system.armor?.value > 0) && 
                 !i.name.includes("(Broken)")
             );
-            affectedUserId = game.users.find(u => u.character?.id === targetActor.id || targetActor.ownership[u.id] >= 1)?.id || gmUser?.id;
+            affectedUserId = game.users.find(u => !u.isGM && (u.character?.id === targetActor.id || targetActor.ownership[u.id] >= 1))?.id || gmUser?.id;
             rollType = "crit";
             attackerUserId = rollingUser && (rollingUser.character?.id === attacker.id || attacker.ownership[rollingUser.id] >= 1)
                 ? rollingUser.id
-                : game.users.find(u => u.character?.id === attacker.id || attacker.ownership[u.id] >= 1)?.id || gmUser?.id;
+                : game.users.find(u => !u.isGM && (u.character?.id === attacker.id || attacker.ownership[u.id] >= 1))?.id || gmUser?.id;
         } else {
             console.log("[Sunder] Roll does not meet breakage thresholds or mechanic disabled.");
             return;

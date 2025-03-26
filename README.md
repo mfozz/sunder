@@ -1,11 +1,13 @@
 # Sunder 
 
-<span style="color:red;">WIP</span>
+
 ![Foundry Minimum Version](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/mfozz/sunder/main/module.json&label=Foundry%20Version&query=$.compatibility.minimum&colorB=orange)
 ![Latest Release](https://img.shields.io/github/v/release/mfozz/sunder)
 ![Downloads](https://img.shields.io/github/downloads/mfozz/sunder/total)
 [![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Fsunder&colorB=4aa94a)](https://forge-vtt.com/bazaar#package=sunder)
 
+
+<span style="color:red;">WIP</span>
 **Why do I need this module?**  
 -----------
 Do you want your fights to feel more dyanamic by weapons and armor suddenly breaking in the middle of a fight? Do you wish that all those random shields and swords you picked up were finally useful? 

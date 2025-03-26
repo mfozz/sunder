@@ -7,7 +7,7 @@
 [![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Fsunder&colorB=4aa94a)](https://forge-vtt.com/bazaar#package=sunder)   
 
 
-<code style="color:red;">WIP</code>  
+‹code style="color: red">WIP</code> 
 **Why do I need this module?**  
 -----------
 Do you want your fights to feel more dyanamic by weapons and armor suddenly breaking in the middle of a fight? Do you wish that all those random shields and swords you picked up were finally useful? 

@@ -1,29 +1,86 @@
-// Player Repair Request Macro with Checkboxes, Chat, Sound, and Gold Check (Updated for Percentage)
+// Player Repair Request Macro with Tile Trigger Support - Players Can Repair
 async function requestRepair() {
-    const controlled = canvas.tokens.controlled;
-    if (controlled.length !== 1) {
-        ui.notifications.warn("Please select exactly one token!");
+    let controlled = canvas.tokens.controlled;
+    let actor;
+
+    if (controlled.length === 1) {
+        actor = controlled[0].actor;
+    } else {
+        const sceneTokens = canvas.tokens.placeables.filter(t => 
+            t.actor && (t.actor.hasPlayerOwner || game.user.isGM)
+        );
+        
+        if (sceneTokens.length === 0) {
+            ui.notifications.warn("No controllable tokens found in the scene!");
+            return;
+        }
+
+        if (sceneTokens.length === 1) {
+            actor = sceneTokens[0].actor;
+        } else {
+            const tokenOptions = sceneTokens.map(t => 
+                `<option value="${t.id}">${t.name} (${t.actor.name})</option>`
+            ).join("");
+            
+            const result = await new Promise(resolve => {
+                new Dialog({
+                    title: "Select Token to Repair",
+                    content: `
+                        <p>Select a token to repair items for:</p>
+                        <select id="token-select">${tokenOptions}</select>
+                    `,
+                    buttons: {
+                        select: {
+                            label: "Select",
+                            callback: html => resolve(html.find("#token-select").val())
+                        },
+                        cancel: {
+                            label: "Cancel",
+                            callback: () => resolve(null)
+                        }
+                    },
+                    default: "select"
+                }).render(true);
+            });
+
+            if (!result) return;
+            actor = canvas.tokens.get(result).actor;
+        }
+    }
+
+    if (!actor) {
+        ui.notifications.error("No actor selected for repair!");
         return;
     }
-    const actor = controlled[0].actor;
+
     const damagedItems = actor.items.filter(i => i.getFlag("sunder", "damaged"));
     if (damagedItems.length === 0) {
         ui.notifications.info(`${actor.name} has no damaged items to repair.`);
         return;
     }
 
-    const repairPercentage = game.settings.get("sunder", "repairCostPercentage") / 100;
+    const repairPercentageRaw = game.settings.get("sunder", "repairCostPercentage");
+    const repairPercentage = (typeof repairPercentageRaw === "number" && !isNaN(repairPercentageRaw)) ? repairPercentageRaw / 100 : 0.5;
+    console.log("[Sunder] Repair cost debug:", { repairPercentageRaw, type: typeof repairPercentageRaw, repairPercentage });
 
-    // Build item list with checkboxes
     let itemList = damagedItems.map((i, index) => {
         const isBroken = (i.getFlag("sunder", "durability") ?? 999) <= 0;
         const basePrice = i.getFlag("sunder", "originalPrice") || i.system.price?.value || 1;
         const costMultiplier = isBroken ? repairPercentage * 2 : repairPercentage;
         const cost = Math.max(1, Math.floor(basePrice * costMultiplier));
+        console.log("[Sunder] Item cost debug:", { 
+            item: i.name, 
+            basePrice, 
+            isBroken, 
+            costMultiplier, 
+            cost 
+        });
+        const costString = Number(cost).toString(); // Force number to string
+        console.log("[Sunder] Post-template cost:", { cost, costString });
         return `
             <div class="repair-item">
-                <input type="checkbox" name="item-${index}" value="${i.id}" checked data-cost="${cost}">
-                <label>${i.name} (${isBroken ? "Broken" : "Damaged"}, ${cost}gp)</label>
+                <input type="checkbox" name="item-${index}" value="${i.id}" checked data-cost="${costString}">
+                <label>${i.name} (${isBroken ? "Broken" : "Damaged"}, ${costString}gp)</label>
             </div>
         `;
     }).join("");
@@ -32,10 +89,6 @@ async function requestRepair() {
         repair: {
             label: "Repair Selected",
             callback: async (html) => {
-                if (!game.user.isGM) {
-                    ui.notifications.error("Only the GM can execute repairs!");
-                    return;
-                }
                 const selectedItems = html.find("input[type='checkbox']:checked").map((_, el) => ({
                     id: el.value,
                     cost: parseInt(el.dataset.cost)
@@ -53,8 +106,6 @@ async function requestRepair() {
         }
     };
 
-    if (!game.user.isGM) delete buttons.repair; // Hide "Repair" for non-GMs
-
     new Dialog({
         title: `Repair Items for ${actor.name}`,
         content: `
@@ -67,7 +118,7 @@ async function requestRepair() {
                 ${itemList}
                 <p id="total-cost">Total Cost: <span id="cost-value">0</span>gp</p>
             </form>
-            ${game.user.isGM ? "<p>Select items and click 'Repair Selected' to process.</p>" : "<p>Ask the GM to repair these items.</p>"}
+            <p>Select items and click 'Repair Selected' to process.</p>
             <script>
                 function updateTotalCost() {
                     const checkboxes = document.querySelectorAll("input[type='checkbox']");
@@ -80,13 +131,12 @@ async function requestRepair() {
                 document.querySelectorAll("input[type='checkbox']").forEach(cb => {
                     cb.addEventListener("change", updateTotalCost);
                 });
-                updateTotalCost(); // Initial calculation
+                updateTotalCost();
             </script>
         `,
         buttons: buttons,
         default: "cancel",
         render: () => {
-            // Ensure total cost updates on load
             const checkboxes = document.querySelectorAll("input[type='checkbox']");
             checkboxes.forEach(cb => cb.addEventListener("change", updateTotalCost));
             updateTotalCost();
@@ -94,7 +144,7 @@ async function requestRepair() {
     }).render(true);
 }
 
-// GM Repair Execution with Gold Check and Percentage
+// Repair Execution with Gold Check and Percentage (Players Can Run)
 async function executeRepair(actor, selectedItems) {
     const damagedItems = actor.items.filter(i => selectedItems.some(s => s.id === i.id));
     if (damagedItems.length === 0) {
@@ -104,10 +154,9 @@ async function executeRepair(actor, selectedItems) {
 
     const totalCost = selectedItems.reduce((sum, s) => sum + s.cost, 0);
 
-    // Gold check for PCs
     if (actor.type === "character" && (actor.system.currency?.gp || 0) < totalCost) {
         ui.notifications.warn(`${actor.name} does not have enough gold to repair these items (${totalCost}gp required)!`);
-        return; // Stop the repair
+        return;
     }
 
     const durabilityByRarity = JSON.parse(game.settings.get("sunder", "durabilityByRarity") || '{"common": 1, "uncommon": 2, "rare": 3, "veryRare": 4, "legendary": 5}');
@@ -134,7 +183,6 @@ async function executeRepair(actor, selectedItems) {
         repairedList += `<li>${baseName} (${isBroken ? "Broken" : "Damaged"})</li>`;
     }
 
-    // Chat message on completion
     await ChatMessage.create({
         content: `
             <p><strong>Repairs Complete for ${actor.name}!</strong></p>
@@ -145,8 +193,7 @@ async function executeRepair(actor, selectedItems) {
         style: CONST.CHAT_MESSAGE_STYLES.OOC
     });
 
-    // Repair sound (blacksmith hammer)
-    const repairSound = "sounds/combat/epic-start-3hit.ogg"; // Placeholder—replace with actual path
+    const repairSound = "sounds/combat/epic-start-3hit.ogg";
     AudioHelper.play({ src: repairSound }, true);
 
     if (actor.type === "character" && actor.system.currency?.gp >= totalCost) {

@@ -65,7 +65,7 @@ class Sunder {
             scope: "world",
             config: true,
             type: Number,
-            default: 2,
+            default: 20,
             range: { min: 1, max: 20, step: 1 }
         });
 
@@ -75,7 +75,7 @@ class Sunder {
             scope: "world",
             config: true,
             type: Number,
-            default: 20,
+            default: 10,
             range: { min: 5, max: 20, step: 1 }
         });
 
@@ -201,8 +201,8 @@ class Sunder {
             html.find(".sheet-footer").prepend(resetButton);
             html.find(".sunder-reset-defaults").click(async () => {
                 await game.settings.set("sunder", "breakageThreshold", 1);
-                await game.settings.set("sunder", "criticalBreakageThreshold", 2);
-                await game.settings.set("sunder", "breakageDC", 20);
+                await game.settings.set("sunder", "criticalBreakageThreshold", 20);
+                await game.settings.set("sunder", "breakageDC", 10);
                 await game.settings.set("sunder", "durabilityByRarity", JSON.stringify({
                     common: 1,
                     uncommon: 2,
@@ -237,14 +237,6 @@ class Sunder {
             const repairPercentage = game.settings.get("sunder", "repairCostPercentage") / 100;
             const costMultiplier = isBroken ? repairPercentage * 2 : repairPercentage;
             const cost = Math.max(1, Math.floor(basePrice * costMultiplier));
-            const durabilityByRarityRaw = game.settings.get("sunder", "durabilityByRarity");
-            let durabilityByRarity;
-            try {
-                durabilityByRarity = JSON.parse(durabilityByRarityRaw);
-            } catch (e) {
-                durabilityByRarity = { common: 1, uncommon: 2, rare: 3, veryRare: 4, legendary: 5 };
-            }
-
             buttons.unshift({
                 label: "Repair",
                 class: "sunder-repair",
@@ -300,38 +292,71 @@ class Sunder {
         if (!isRoll) return;
 
         const isAttackRoll = message.flags?.dnd5e?.roll?.type === "attack";
-        console.log("[Sunder] Is attack roll?", isAttackRoll, "Flags:", message.flags?.dnd5e);
-        if (!isAttackRoll) return;
+        if (isAttackRoll && message.author.id === game.user.id) {
+            const roll = message.rolls?.[0];
+            const keptResult = roll.terms[0].results.find(r => r.active)?.result;
+            const rawD20 = keptResult !== undefined ? keptResult : roll.terms[0].results[0].result;
+            console.log("[Sunder] Roll data:", roll, "Raw d20 (kept):", rawD20, "Final result:", roll.total);
+            if (rawD20 === undefined) return;
 
-        const roll = message.rolls?.[0];
-        const rollTotal = roll?.total;
-        console.log("[Sunder] Roll data:", roll, "Final result:", rollTotal);
-        if (rollTotal === undefined) return;
+            const speaker = ChatMessage.getSpeaker();
+            console.log("[Sunder] Speaker:", speaker);
+            const token = canvas.tokens.get(speaker.token);
+            const attacker = token ? token.actor : game.actors.get(speaker.actor);
+            console.log("[Sunder] Attacker:", attacker?.name || "None", "Using token:", !!token);
 
-        const speaker = ChatMessage.getSpeaker();
-        console.log("[Sunder] Speaker:", speaker);
-        const token = canvas.tokens.get(speaker.token);
-        const attacker = token ? token.actor : game.actors.get(speaker.actor);
-        console.log("[Sunder] Attacker:", attacker?.name || "None", "Using token:", !!token);
+            let weaponItem;
+            const itemId = message.flags?.dnd5e?.item?.id || message.flags?.dnd5e?.roll?.itemId;
+            console.log("[Sunder] Weapon ID from roll flags:", itemId);
+            if (itemId) {
+                weaponItem = attacker.items.get(itemId);
+            }
+            if (!weaponItem && this.lastAttackMessage) {
+                const weaponMatch = this.lastAttackMessage.content.match(/<span class="title">([^<]+)<\/span>/);
+                const weaponName = weaponMatch ? weaponMatch[1] : null;
+                console.log("[Sunder] Weapon from last attack message:", weaponName);
+                weaponItem = weaponName
+                    ? attacker.items.find(i => i.type === "weapon" && i.name.includes(weaponName) && i.system.equipped)
+                    : attacker.items.find(i => i.type === "weapon" && i.system.equipped);
+            }
+            const isHeavy = weaponItem?.system.properties?.has("hvy") || false;
+            console.log("[Sunder] Attacker weapon:", weaponItem?.name || "None", "Is Heavy:", isHeavy);
 
-        let weaponItem;
-        const itemId = message.flags?.dnd5e?.item?.id || message.flags?.dnd5e?.roll?.itemId;
-        console.log("[Sunder] Weapon ID from roll flags:", itemId);
-        if (itemId) {
-            weaponItem = attacker.items.get(itemId);
+            const targets = game.user.targets.size > 0 ? Array.from(game.user.targets) : [];
+            const target = targets.length > 0 ? targets[0] : null;
+            console.log("[Sunder] Local targets:", targets.map(t => t.actor?.name));
+
+            await this._triggerBreakage(attacker, target, rawD20, isHeavy, message.id, weaponItem);
         }
-        if (!weaponItem && this.lastAttackMessage) {
-            const weaponMatch = this.lastAttackMessage.content.match(/<span class="title">([^<]+)<\/span>/);
-            const weaponName = weaponMatch ? weaponMatch[1] : null;
-            console.log("[Sunder] Weapon from last attack message:", weaponName);
-            weaponItem = weaponName
-                ? attacker.items.find(i => i.type === "weapon" && i.name.includes(weaponName) && i.system.equipped)
-                : attacker.items.find(i => i.type === "weapon" && i.system.equipped);
-        }
-        const isHeavy = weaponItem?.system.properties?.has("hvy") || false;
-        console.log("[Sunder] Attacker weapon:", weaponItem?.name || "None", "Is Heavy:", isHeavy);
 
-        await this._triggerBreakage(attacker, rollTotal, isHeavy);
+        const sunderData = message.getFlag("sunder", "attackerTokenUuid");
+        if (sunderData && message.author.id !== game.user.id) {
+            const flags = message.flags.sunder;
+            const actor = (await fromUuid(flags.targetTokenUuid))?.actor;
+            const item = await fromUuid(flags.itemUuid);
+            if (!actor || !item) {
+                console.error("[Sunder] Failed to resolve actor or item from chat flags:", flags);
+                return;
+            }
+
+            const currentUserId = game.user.id;
+            const isGM = game.user.isGM;
+            const isAffectedUser = currentUserId === flags.affectedUserId;
+
+            if (isGM || isAffectedUser) {
+                console.log(`[Sunder] Showing breakage popup for ${isGM ? "GM" : "Player"}: ${actor.name}, ${item.name}`);
+                await game.sunderUI.showBreakagePopup(actor, item, flags.isHeavy, flags.gmUserId, flags.affectedUserId, flags.rollType, flags.attackerUserId);
+            }
+        }
+
+        const resolveData = message.getFlag("sunder", "resolveBreakage");
+        if (resolveData) {
+            const dialog = Object.values(ui.windows).find(w => w.title === game.i18n.localize("sunder.popup.title"));
+            if (dialog) {
+                dialog.close();
+                console.log(`[Sunder] Closed dialog for item ${message.flags.sunder.itemUuid} due to resolution: ${message.flags.sunder.resolution}`);
+            }
+        }
     }
 
     async _handleMidiQolWorkflow(workflow) {
@@ -342,89 +367,132 @@ class Sunder {
             return;
         }
 
-        const rollTotal = workflow.attackTotal || roll.total;
-        console.log("[Sunder] MIDI Roll data:", roll, "Final result:", rollTotal);
-        if (rollTotal === undefined) return;
+        const keptResult = roll.terms[0].results.find(r => r.active)?.result;
+        const rawD20 = keptResult !== undefined ? keptResult : roll.terms[0].results[0].result;
+        console.log("[Sunder] MIDI Roll data:", roll, "Raw d20 (kept):", rawD20, "Final result:", roll.total);
+        if (rawD20 === undefined) return;
 
         const attacker = workflow.actor;
         console.log("[Sunder] MIDI Attacker:", attacker?.name);
 
         const isHeavy = workflow.item?.system.properties?.has("hvy") || false;
-        console.log("[Sunder] MIDI Attacker weapon:", workflow.item?.name || "None", "Is Heavy:", isHeavy);
+        const attackWeapon = workflow.item;  // MIDI-QOL provides the exact weapon
+        console.log("[Sunder] MIDI Attacker weapon:", attackWeapon?.name || "None", "Is Heavy:", isHeavy);
 
-        await this._triggerBreakage(attacker, rollTotal, isHeavy);
+        const targets = workflow.targets.size > 0 ? Array.from(workflow.targets) : [];
+        const target = targets.length > 0 ? targets[0] : null;
+
+        await this._triggerBreakage(attacker, target, rawD20, isHeavy, null, attackWeapon);
     }
 
-    async _triggerBreakage(attacker, rollTotal, isHeavy) {
+    async _triggerBreakage(attacker, target, rawD20, isHeavy, messageId, attackWeapon = null) {
         const threshold = game.settings.get("sunder", "breakageThreshold");
         const criticalThreshold = game.settings.get("sunder", "criticalBreakageThreshold");
         const enableWeaponBreakage = game.settings.get("sunder", "enableWeaponBreakage");
         const enableArmorBreakage = game.settings.get("sunder", "enableArmorBreakage");
-    
+
         let itemType, item, targetActor, affectedUserId, rollType, attackerUserId;
         const gmUser = game.users.find(u => u.isGM && u.active);
         const rollingUser = game.user;
-    
-        console.log(`[Sunder] Attacker ownership: ${JSON.stringify(attacker.ownership)}, Rolling user: ${rollingUser.id}`);
-    
-        if (rollTotal <= threshold && enableWeaponBreakage) {
+
+        console.log(`[Sunder] Attacker: ${attacker?.name || "None"}, Target: ${target?.actor?.name || "None"}, Attacker ownership: ${JSON.stringify(attacker?.ownership || {})}, Rolling user: ${rollingUser.id}`);
+        if (target) console.log(`[Sunder] Target ownership: ${JSON.stringify(target.actor?.ownership || {})}`);
+
+        if (!attacker) {
+            console.error("[Sunder] No attacker found for breakage check.");
+            return;
+        }
+
+        console.log(`[Sunder] Raw d20: ${rawD20}, Fumble Threshold: ${threshold}, Crit Threshold: ${criticalThreshold}`);
+
+        if (rawD20 <= threshold && enableWeaponBreakage) {
             itemType = "weapon";
             targetActor = attacker;
-            item = targetActor.items.find(i => i.type === "weapon" && i.system.equipped);
+            item = attackWeapon || targetActor.items.find(i => i.type === "weapon" && i.system.equipped);
+            if (!item) {
+                console.log("[Sunder] No equipped weapon found for fumble breakage.");
+                return;
+            }
             affectedUserId = rollingUser && (rollingUser.character?.id === attacker.id || attacker.ownership[rollingUser.id] >= 1)
                 ? rollingUser.id
                 : game.users.find(u => !u.isGM && (u.character?.id === attacker.id || attacker.ownership[u.id] >= 1))?.id || gmUser?.id;
             rollType = "fumble";
             attackerUserId = affectedUserId;
-        } else if (rollTotal >= criticalThreshold && enableArmorBreakage) {
+        } else if (rawD20 >= criticalThreshold && enableArmorBreakage) {
             itemType = "armor";
-            const targets = game.user.targets.size > 0 ? Array.from(game.user.targets) : [];
-            targetActor = targets.length > 0 ? targets[0].actor : null;
+            targetActor = target ? target.actor : null;
             if (!targetActor) {
-                console.log("[Sunder] No target found for crit breakage check.");
+                console.log("[Sunder] No target actor found for crit breakage check.");
                 return;
             }
-            console.log(`[Sunder] Target ownership: ${JSON.stringify(targetActor.ownership)}`);
             item = targetActor.items.find(i => 
-                i.type === "equipment" && i.system.equipped && 
-                (i.system.type?.value === "shield" || i.system.armor?.value > 0) && 
+                i.type === "equipment" && 
+                i.system.equipped && 
+                i.system.type?.value === "shield" && 
                 !i.name.includes("(Broken)")
             );
+            if (!item) {
+                item = targetActor.items.find(i => 
+                    i.type === "equipment" && 
+                    i.system.equipped && 
+                    i.system.armor?.value > 0 && 
+                    i.system.type?.value !== "shield" && 
+                    !i.name.includes("(Broken)")
+                );
+            }
             affectedUserId = game.users.find(u => !u.isGM && (u.character?.id === targetActor.id || targetActor.ownership[u.id] >= 1))?.id || gmUser?.id;
             rollType = "crit";
             attackerUserId = rollingUser && (rollingUser.character?.id === attacker.id || attacker.ownership[rollingUser.id] >= 1)
                 ? rollingUser.id
                 : game.users.find(u => !u.isGM && (u.character?.id === attacker.id || attacker.ownership[u.id] >= 1))?.id || gmUser?.id;
         } else {
-            console.log("[Sunder] Roll does not meet breakage thresholds or mechanic disabled.");
+            console.log("[Sunder] Raw d20 does not meet breakage thresholds or mechanic disabled:", rawD20);
             return;
         }
-    
+
         if (!item || !targetActor) {
             console.log("[Sunder] No valid item or target actor found for breakage.");
             return;
         }
-    
+
         console.log(`[Sunder] Triggering breakage popup: actor=${targetActor.name}, item=${item.name}, rollType=${rollType}, affectedUser=${affectedUserId}, attackerUser=${attackerUserId}, gmUser=${gmUser?.id}`);
         await game.sunderUI.showBreakagePopup(targetActor, item, isHeavy, gmUser?.id, affectedUserId, rollType, attackerUserId);
+
+        const attackerToken = canvas.tokens.get(attacker.token) || canvas.tokens.placeables.find(t => t.actor?.id === attacker.id);
+        const targetToken = target;
+        if (rollingUser.id === game.user.id) {
+            await ChatMessage.create({
+                content: `<strong>[Sunder]</strong> Breakage Check Triggered`,
+                speaker: { alias: attacker.name },
+                whisper: [gmUser.id, affectedUserId],
+                flags: {
+                    sunder: {
+                        attackerTokenUuid: attackerToken?.document.uuid,
+                        targetTokenUuid: targetToken?.document.uuid,
+                        itemUuid: item.uuid,
+                        isHeavy,
+                        rollType,
+                        affectedUserId,
+                        attackerUserId,
+                        gmUserId: gmUser?.id
+                    }
+                }
+            });
+        }
     }
 }
 
 Hooks.once('init', () => {
     console.log("[Sunder] Init hook fired");
     game.sunder = new Sunder();
-});
 
-Hooks.on("init", () => {
     game.socket.on("module.sunder", async (data) => {
-        if (data.type === "showBreakagePopup" && game.user.id === data.gmUserId) {
-            console.log(`[Sunder] GM received socket request for actor ${data.actorId}, item ${data.itemId}`);
-            const actor = game.actors.get(data.actorId);
-            const item = actor?.items.get(data.itemId);
-            if (actor && item) {
-                await game.sunderUI.showBreakagePopup(actor, item, data.isHeavy, data.gmUserId, data.affectedUserId, data.rollType, data.attackerUserId);
-            } else {
-                console.error("[Sunder] Failed to find actor or item for breakage popup:", data);
+        console.log(`[Sunder] Socket event received: ${JSON.stringify(data)}`);
+        if (data.type === "resolveBreakage") {
+            const dialog = Object.values(ui.windows).find(w => w.title === game.i18n.localize("sunder.popup.title"));
+            if (dialog) {
+                dialog.close();
+                console.log(`[Sunder] Closed dialog for item ${data.itemId} due to resolution: ${data.resolution}`);
             }
         }
     });

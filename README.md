@@ -15,21 +15,21 @@ Do you want your fights to feel more dyanamic by weapons and armor suddenly brea
 Now you can add some literal crunch to your game! This D&D 5e module breaks weapons on fumbles and breaks armor on crits, both with customizable thresholds. Repair items by clicking the hammer icon in the item's header or by using a macro. Whether you're running a gritty campaign or just want gear to feel more dynamic, Sunder has you covered.
 
 
-<img src="https://github.com/user-attachments/assets/7416cf01-a9c7-4ec3-906c-14ebe6030b1b" alt="" width="40%">
-<img src="https://github.com/user-attachments/assets/a039fe07-a350-474b-b3ea-0b93f4ba6fd5" alt="" width="40%">  
+<img src="https://github.com/user-attachments/assets/7416cf01-a9c7-4ec3-906c-14ebe6030b1b" alt="" width="30%">
+<img src="https://github.com/user-attachments/assets/a039fe07-a350-474b-b3ea-0b93f4ba6fd5" alt="" width="30%">  
+<img src="https://github.com/user-attachments/assets/ad008479-0427-4bc7-86bc-a14a9310f4ad" alt="" width="30%">
 
 <br><br>
 <img src="https://github.com/user-attachments/assets/4ef126ef-caf9-4a6f-8c36-3e5e913decd6" alt="" width="50%">  
 <img src="https://github.com/user-attachments/assets/a7282651-ba92-41ac-b6f4-fecf5ee34e5a" alt="" width="50%">
 <br><br>
 
-<img src="https://github.com/user-attachments/assets/ad008479-0427-4bc7-86bc-a14a9310f4ad" alt="" width="50%">
+
 <br><br>
 <img src="https://github.com/user-attachments/assets/0f002dd4-8d20-470c-93c4-5e51265a7ff7" alt="" width="40%">
 <img src="https://github.com/user-attachments/assets/427f2394-d62d-4cab-a926-b07ecd8e721e" alt="" width="40%">
 
 
-<br><br>
 
 Manual Download:
 -----------

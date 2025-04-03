@@ -25,8 +25,9 @@ Now you can add some literal crunch to your game! This D&D 5e module breaks weap
 
 <img src="https://github.com/user-attachments/assets/ad008479-0427-4bc7-86bc-a14a9310f4ad" alt="" width="50%">
 <br><br>
-![repair macro](https://github.com/user-attachments/assets/0f002dd4-8d20-470c-93c4-5e51265a7ff7)
-![repair button](https://github.com/user-attachments/assets/a1b60225-1108-4e90-b931-c42fe8045d83)
+<img src="https://github.com/user-attachments/assets/0f002dd4-8d20-470c-93c4-5e51265a7ff7" alt="" width="40%">
+<img src="https://github.com/user-attachments/assets/427f2394-d62d-4cab-a926-b07ecd8e721e" alt="" width="40%>
+
 
 
 

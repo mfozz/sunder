@@ -31,13 +31,6 @@ Now you can add some literal crunch to your game! This D&D 5e module breaks weap
 
 
 
-Manual Download:
------------
-https://github.com/mfozz/sunder/releases/latest/download/module.json
-
-
-
-
 ## Features
 - **Breakage Mechanics:** Trigger weapon breakage on low rolls and armor/shield breakage on high rolls with configurable thresholds.
 - **Two-Stage Breakage:** Transition items from Undamaged → Damaged → Broken. Durability is based on rarity and decrements by 1 per hit until reaching 0. At durability 0, the item is broken.

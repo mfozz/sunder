@@ -2,15 +2,15 @@
   "id": "sunder",
   "title": "Sunder",
   "description": "Automates weapon and armor breakage with durability tracking and customizable effects",
-  "version": "3.0.1",
+  "version": "4.0.1",
 
   "url": "https://github.com/mfozz/sunder",
-  "manifest": "https://raw.githubusercontent.com/mfozz/sunder/main/module.json",
-  "download": "https://github.com/mfozz/sunder/releases/download/3.0.1/module.zip",
+  "manifest": "https://github.com/mfozz/sunder/releases/latest/download/module.json",
+  "download": "https://github.com/mfozz/sunder/releases/download/4.0.1/module.zip",
 
-  "readme": "https://raw.githubusercontent.com/mfozz/sunder/main/README.md",
-  "changelog": "https://raw.githubusercontent.com/mfozz/sunder/main/CHANGELOG.md",
-  "license": "https://raw.githubusercontent.com/mfozz/sunder/main/LICENSE",
+  "readme": "https://github.com/mfozz/sunder/blob/main/README.md",
+  "changelog": "https://github.com/mfozz/sunder/blob/main/CHANGELOG.md",
+  "license": "https://github.com/mfozz/sunder/blob/main/LICENSE",
   "bugs": "https://github.com/mfozz/sunder/issues",
 
   "media": [
@@ -26,21 +26,17 @@
     "ui-hooks.js",
     "hooks.js",
     "durability-config.js",
-    "sunder-ui.js"
+    "sunder-ui.js",
+    "effects.js",
+    "breakage-roll.js",
+    "breakage-context.js",
+    "item-sheet.js",
+    "attack-rolls.js",
+    "chat-messages.js",
+    "sunder-runtime.js"
   ],
-  "compatibility": { "minimum": "13", "verified": "13" },
+  "compatibility": { "minimum": "13", "verified": "14" },
   "styles": ["styles.css"],
-  "packs": [
-    {
-      "name": "sunder-macros",
-      "label": "Sunder Macros",
-      "path": "packs/sunder-macros.db",
-      "type": "Macro",
-      "ownership": { "PLAYER": "OBSERVER", "ASSISTANT": "OWNER" },
-      "flags": {}
-    }
-  ],
-  "languages": [
-    { "lang": "en", "name": "English", "path": "lang/en.json", "flags": {} }
-  ]
+  "packs": [ { "name": "sunder-macros", "label": "Sunder Macros", "path": "packs/sunder-macros.db", "type": "Macro", "ownership": { "PLAYER": "OBSERVER", "ASSISTANT": "OWNER" }, "flags": {} } ],
+  "languages": [ { "lang": "en", "name": "English", "path": "lang/en.json", "flags": {} } ]
 }

@@ -1,6 +1,12 @@
 import * as utils from './utils.js';
 import { DurabilityConfig } from './durability-config.js';
 
+function getHTMLElement(html) {
+    if (html instanceof HTMLElement) return html;
+    if (html?.[0] instanceof HTMLElement) return html[0];
+    return null;
+}
+
 export function registerSettings() {
     const settings = [
         {
@@ -59,6 +65,15 @@ export function registerSettings() {
             type: Number,
             default: 10,
             range: { min: 5, max: 20, step: 1 }
+        },
+        {
+            key: "autoRollBreakageChecks",
+            name: "SUNDER.Settings.AutoRollBreakageChecks.Name",
+            hint: "SUNDER.Settings.AutoRollBreakageChecks.Hint",
+            scope: "world",
+            config: true,
+            type: Boolean,
+            default: false
         },
         {
             key: "durabilityByRarity",
@@ -199,16 +214,19 @@ export function registerSettings() {
     utils.log("Settings registered");
 
     Hooks.on("renderSettingsConfig", (app, html) => {
+        const element = getHTMLElement(html);
+        if (!element) return;
+
         utils.log("Rendering settings config");
 
         const dynamicACEnabled = game.settings.get("sunder", "enableDynamicACPenalties");
-        const armorPenaltySetting = html.querySelector(`[name="sunder.armorACPenalty"]`)?.closest('.form-group');
+        const armorPenaltySetting = element.querySelector(`[name="sunder.armorACPenalty"]`)?.closest('.form-group');
         if (armorPenaltySetting && dynamicACEnabled) {
             const input = armorPenaltySetting.querySelector('input');
             if (input) input.disabled = true;
         }
 
-        const dynamicACCheckbox = html.querySelector(`[name="sunder.enableDynamicACPenalties"]`);
+        const dynamicACCheckbox = element.querySelector(`[name="sunder.enableDynamicACPenalties"]`);
         if (dynamicACCheckbox) {
             dynamicACCheckbox.addEventListener('change', (event) => {
                 const enabled = event.target.checked;
@@ -223,7 +241,7 @@ export function registerSettings() {
             });
         }
 
-        const durabilitySetting = html.querySelector(`[name="sunder.durabilityByRarity"]`)?.closest('.form-group');
+        const durabilitySetting = element.querySelector(`[name="sunder.durabilityByRarity"]`)?.closest('.form-group');
         if (durabilitySetting) {
             const newDiv = document.createElement('div');
             newDiv.className = 'form-group';
@@ -240,48 +258,12 @@ export function registerSettings() {
             newDiv.appendChild(button);
             newDiv.appendChild(hint);
             durabilitySetting.replaceWith(newDiv);
-            const durabilityButton = html.querySelector(".sunder-durability-button");
+            const durabilityButton = element.querySelector(".sunder-durability-button");
             if (durabilityButton) {
                 durabilityButton.addEventListener("click", () => {
                     new DurabilityConfig().render(true);
                 });
             }
-        }
-
-        const resetButton = document.createElement('button');
-        resetButton.type = 'button';
-        resetButton.className = 'sunder-reset-defaults';
-        resetButton.textContent = game.i18n.localize("SUNDER.Settings.ResetButton");
-        const sheetFooter = html.querySelector(".sheet-footer");
-        if (sheetFooter) {
-            sheetFooter.insertAdjacentElement('afterbegin', resetButton);
-        }
-        const resetButtonElement = html.querySelector(".sunder-reset-defaults");
-        if (resetButtonElement) {
-            resetButtonElement.addEventListener("click", async () => {
-                await game.settings.set("sunder", "breakageThreshold", 1);
-                await game.settings.set("sunder", "criticalBreakageThreshold", 20);
-                await game.settings.set("sunder", "breakageDC", 10);
-                await game.settings.set("sunder", "durabilityByRarity", JSON.stringify({
-                    common: 1,
-                    uncommon: 2,
-                    rare: 3,
-                    veryRare: 4,
-                    legendary: 5
-                }));
-                await game.settings.set("sunder", "weaponAttackPenalty", -2);
-                await game.settings.set("sunder", "armorACPenalty", -2);
-                await game.settings.set("sunder", "enableDynamicACPenalties", true);
-                await game.settings.set("sunder", "heavyWeaponBonus", 2);
-                await game.settings.set("sunder", "repairPercentage", 50);
-                await game.settings.set("sunder", "breakageSound", "sounds/combat/epic-turn-1hit.ogg");
-                await game.settings.set("sunder", "breakagePassSound", "sounds/combat/epic-turn-2hit.ogg");
-                await game.settings.set("sunder", "breakageFailSound", "sounds/combat/epic-turn-2hit.ogg");
-                await game.settings.set("sunder", "repairSound", "");
-                await game.settings.set("sunder", "alwaysCheckSunder", false);
-                ui.notifications.info(game.i18n.localize("SUNDER.Notification.SettingsReset"));
-                app.render(true);
-            });
         }
 
         utils.log("Settings registration complete");

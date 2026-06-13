@@ -44,4 +44,4 @@ Now you can add some literal crunch to your game! This D&D 5e module breaks weap
 - **UI Enhancements:** Breakage popup shows an item preview with an icon and a color-coded status (orange for Damaged).
 - **Targeting Logic:** Prioritize shields and skip broken items.
 - **MIDI Support:** Use it with both the vanilla D&D 5e and MIDI QOL workflows.
-- **Macros Included:** Use the bundled macros to repair all items (GM), break items (GM), and repair select items on tokens (player and GM).
+- **Macros Included:** Use the bundled macros to quickly repair items for all tokens on the scene (GM only), damage or break items (GM only), or repair items for a cost (GM and player).
